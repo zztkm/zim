@@ -11,6 +11,8 @@ C 言語の参考実装（kilolo.c）をベースに、vim 特有のモード管
 - **基本機能のみ**: 検索やシンタックスハイライトは後回し
 - **1ファイルのみ**: 同時に開けるのは1ファイル
 - **段階的実装**: 最小限の機能で動くエディタを早く作る
+- **UTF-8 対応**: 日本語などのマルチバイト文字を正しく扱う
+- **対応 OS**: macOS / Linux のみ（改行コードは LF `\n` のみサポート）
 
 ## アーキテクチャ
 
@@ -31,9 +33,11 @@ src/
 ### 依存クレート
 ```toml
 [dependencies]
-termion = "4"      # ターミナル制御（raw mode、キー入力、ANSI escape）
-anyhow = "1.0"     # エラーハンドリング
-thiserror = "2.0"  # カスタムエラー型定義
+termion = "4"              # ターミナル制御（raw mode、キー入力、ANSI escape）
+anyhow = "1.0"             # エラーハンドリング
+thiserror = "2.0"          # カスタムエラー型定義
+unicode-width = "0.1"      # 文字の表示幅計算（全角文字対応）
+unicode-segmentation = "1" # グラフィームクラスタ単位の文字列操作
 ```
 
 ### 主要データ構造
@@ -73,13 +77,18 @@ struct Row { chars: String, render: String }
 **Cursor**
 ```rust
 struct Cursor {
-    x: usize,      // 実際の文字位置
+    x: usize,      // 実際の文字位置（グラフィームクラスタ単位）
     y: usize,      // 行位置
-    rx: usize,     // レンダリング位置（タブ考慮）
+    rx: usize,     // レンダリング位置（タブ・文字幅考慮）
     row_offset: usize,
     col_offset: usize,
 }
 ```
+
+**UTF-8 対応のポイント**:
+- グラフィームクラスタ単位でカーソル移動（結合文字や絵文字を1文字として扱う）
+- 文字の表示幅を考慮（全角文字は2カラム、半角は1カラム）
+- バイト位置とグラフィーム位置を適切に変換
 
 ## 段階的実装計画
 
@@ -220,6 +229,53 @@ struct Cursor {
 
 ---
 
+### フェーズ7: UTF-8 完全対応
+**目標**: 日本語などのマルチバイト文字を正しく表示・編集できる
+
+**実装内容**:
+1. `buffer.rs`: グラフィームクラスタ単位での文字列操作
+2. `cursor.rs`: グラフィーム単位でのカーソル移動
+3. `screen.rs`: 文字幅を考慮したレンダリング（全角文字は2カラム幅）
+4. `file_io.rs`: UTF-8 ファイルの読み書き（既に Rust の String で対応済みだが確認）
+
+**実装の詳細**:
+
+**グラフィームクラスタ対応**:
+```rust
+use unicode_segmentation::UnicodeSegmentation;
+
+// 文字列をグラフィームクラスタに分割
+let graphemes: Vec<&str> = text.graphemes(true).collect();
+
+// カーソル移動は graphemes のインデックスで行う
+```
+
+**文字幅計算**:
+```rust
+use unicode_width::UnicodeWidthStr;
+
+// 文字列の表示幅を取得
+let width = text.width();
+
+// 1文字ごとの幅
+for grapheme in text.graphemes(true) {
+    let width = grapheme.width(); // 全角=2, 半角=1
+}
+```
+
+**考慮すべき点**:
+- 結合文字（é = e + ´）を1文字として扱う
+- 絵文字（👨‍👩‍👧‍👦 など）を1文字として扱う
+- 全角文字のカーソル位置計算（2カラム幅）
+- 行の途中で折り返す際の文字幅考慮
+
+**Critical Files**:
+- `src/buffer.rs`
+- `src/cursor.rs`
+- `src/screen.rs`
+
+---
+
 ## kilolo.c との対応関係
 
 | kilolo.c | zim (Rust) | 役割 |
@@ -247,6 +303,10 @@ struct Cursor {
 3. **kilolo.c を参考にする**: 実装に困ったら kilolo.c の該当部分を確認
 
 4. **テストしながら進める**: 各機能実装後、実際にエディタを起動して動作確認
+
+5. **UTF-8 は段階的に対応**: フェーズ1-6では ASCII ベースで実装し、フェーズ7で UTF-8 完全対応に移行。Rust の String は既に UTF-8 なので基本的な読み書きは自然に対応する
+
+6. **改行コードは LF のみ**: macOS/Linux の改行コード `\n` のみサポート。ターミナル出力（raw mode）では `\r\n` を使用するが、ファイル保存時は `\n` のみ
 
 ## 最初のステップ（フェーズ1詳細）
 
