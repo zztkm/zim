@@ -58,9 +58,28 @@ fn main() -> io::Result<()> {
                 }
                 // vim キーバインド
                 Key::Char('h') => cursor.move_left(),
-                Key::Char('j') => cursor.move_down(editor_rows),
-                Key::Char('k') => cursor.move_up(),
-                Key::Char('l') => cursor.move_right(size.0),
+                Key::Char('j') => {
+                    cursor.move_down(editor_rows, buffer.len());
+                    // 移動後の行に合わせて x 座標を調整する
+                    let row = cursor.file_row();
+                    if let Some(line) = buffer.row(row) {
+                        cursor.adjust_cursor_x(line.len());
+                    }
+                }
+                Key::Char('k') => {
+                    cursor.move_up();
+                    // 移動後の行に合わせて x 座標を調整する
+                    let row = cursor.file_row();
+                    if let Some(line) = buffer.row(row) {
+                        cursor.adjust_cursor_x(line.len());
+                    }
+                }
+                Key::Char('l') => {
+                    let row = cursor.file_row();
+                    if let Some(line) = buffer.row(row) {
+                        cursor.move_right(size.0, line.len());
+                    }
+                }
                 Key::Char('0') => cursor.move_to_line_start(),
                 Key::Char('$') => {
                     // 現在の行の長さを取得して行末に移動
@@ -73,12 +92,22 @@ fn main() -> io::Result<()> {
                     if pending_key == Some('g') {
                         // gg: ファイル先頭に移動する
                         cursor.move_to_top();
+                        // 移動後の行に合わせて x 座標を調整する
+                        let row = cursor.file_row();
+                        if let Some(line) = buffer.row(row) {
+                            cursor.adjust_cursor_x(line.len());
+                        }
                     } else {
                         next_pending_key = Some('g');
                     }
                 }
                 Key::Char('G') => {
                     cursor.move_to_bottom(buffer.len(), editor_rows);
+                    // 移動後の行に合わせて x 座標を調整する
+                    let row = cursor.file_row();
+                    if let Some(line) = buffer.row(row) {
+                        cursor.adjust_cursor_x(line.len());
+                    }
                 }
                 _ => {}
             }

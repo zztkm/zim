@@ -36,8 +36,20 @@ impl Cursor {
         }
     }
 
-    pub fn move_down(&mut self, max_rows: u16) {
-        if self.y < max_rows {
+    pub fn move_down(&mut self, max_rows: u16, buffer_len: usize) {
+        // バッファが空なので移動しない
+        if buffer_len == 0 {
+            return;
+        }
+
+        // ファイル内の現在行
+        let current_file_row = self.row_offset + self.y - 1;
+
+        // バッファの最後の行のインデックス
+        let last_row = (buffer_len as u16).saturating_sub(1);
+
+        // バッファの範囲内、かつ画面の範囲内のみで移動可能
+        if current_file_row < last_row && self.y < max_rows {
             self.y += 1;
         }
     }
@@ -46,8 +58,16 @@ impl Cursor {
             self.x -= 1;
         }
     }
-    pub fn move_right(&mut self, max_cols: u16) {
-        if self.x < max_cols {
+    pub fn move_right(&mut self, max_cols: u16, line_len: usize) {
+        // 殻業の場合は移動しない
+        if line_len == 0 {
+            return;
+        }
+
+        // vim の Normal モードでは行の最後の文字まで移動可能
+        let max_x = (line_len as u16).min(max_cols);
+
+        if self.x < max_x {
             self.x += 1;
         }
     }
@@ -86,10 +106,41 @@ impl Cursor {
         }
     }
 
+    pub fn adjust_cursor_x(&mut self, line_len: usize) {
+        if line_len == 0 {
+            self.x = 1;
+        } else {
+            let max_x = line_len as u16;
+            if self.x > max_x {
+                self.x = max_x
+            }
+        }
+    }
+
     /// スクロール処理
     /// editor_rows: エディタ領域の行数(ステータスバーなどを除く)
     pub fn scroll(&mut self, editor_rows: u16, buffer_len: usize) {
+        // バッファが空の場合はスクロールしない
+        if buffer_len == 0 {
+            self.y = 1;
+            self.row_offset = 0;
+            return;
+        }
+
         let file_row = self.row_offset + self.y - 1;
+        let last_row = buffer_len.saturating_sub(1) as u16;
+
+        // カーソルがバッファの範囲を超えていたら修正
+        if file_row > last_row {
+            if last_row < editor_rows {
+                self.y = last_row + 1;
+                self.row_offset = 0;
+            } else {
+                self.row_offset = last_row.saturating_sub(editor_rows - 1);
+                self.y = last_row - self.row_offset + 1;
+            }
+            return;
+        }
 
         // 画面上端より上にカーソルがある場合
         if file_row < self.row_offset {
@@ -101,10 +152,8 @@ impl Cursor {
             self.row_offset = file_row.saturating_sub(editor_rows - 1);
         }
 
-        // カーソルが画面内に収まるように調整
-        if (self.row_offset as usize) < buffer_len {
-            self.y = file_row - self.row_offset + 1;
-        }
+        // カーソルの y 座標を画面内の位置に調整
+        self.y = file_row - self.row_offset + 1;
     }
 
     pub fn file_row(&self) -> usize {
