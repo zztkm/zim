@@ -1,14 +1,35 @@
-use std::io::{self, stdout};
+use std::{
+    env::args,
+    io::{self, stdout},
+};
 
 use termion::{event::Key, input::TermRead};
-use zim::{cursor::Cursor, mode::ModeManager, screen::Screen, terminal::Terminal};
+use zim::{
+    buffer::Buffer, cursor::Cursor, file_io::FileIO, mode::ModeManager, screen::Screen,
+    terminal::Terminal,
+};
 
 fn main() -> io::Result<()> {
     // ターミナル初期化
     let mut terminal = Terminal::new()?;
     terminal.clear_screen()?;
 
-    // 初期化
+    // コマンドライン引数からファイル名を取得する
+    let args: Vec<String> = std::env::args().collect();
+    let (buffer, filename) = if args.len() > 1 {
+        let path = &args[1];
+        match FileIO::open(path) {
+            Ok(buf) => (buf, Some(path.clone())),
+            Err(e) => {
+                eprintln!("Error opening file: {}", e);
+                return Err(e);
+            }
+        }
+    } else {
+        (Buffer::new(), None)
+    };
+
+    // 状態初期化
     let mut cursor = Cursor::new();
     let mut mode_manager = ModeManager::new();
     let mut command_buffer = String::new();
@@ -19,6 +40,8 @@ fn main() -> io::Result<()> {
         &cursor,
         &mode_manager.current(),
         &command_buffer,
+        &buffer,
+        filename.as_deref(),
     )?;
 
     // main loop
@@ -38,6 +61,14 @@ fn main() -> io::Result<()> {
                 Key::Char('j') => cursor.move_down(size.1 - 1),
                 Key::Char('k') => cursor.move_up(),
                 Key::Char('l') => cursor.move_right(size.0),
+                Key::Char('0') => cursor.move_to_line_start(),
+                Key::Char('$') => {
+                    // 現在の行の長さを取得して行末に移動
+                    let row = cursor.file_row();
+                    if let Some(line) = buffer.row(row) {
+                        cursor.move_to_line_end(line.len() as u16);
+                    }
+                }
                 _ => {}
             }
         } else if mode_manager.is_command() {
@@ -70,6 +101,8 @@ fn main() -> io::Result<()> {
             &cursor,
             &mode_manager.current(),
             &command_buffer,
+            &buffer,
+            filename.as_deref(),
         )?;
     }
 
