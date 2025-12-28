@@ -146,15 +146,17 @@ struct Cursor {
 
 ---
 
-### フェーズ3: Insertモードと基本編集
+### フェーズ3: Insertモードと基本編集 ✅
 **目標**: テキスト編集ができる
+
+**ステータス**: 完了
 
 **実装内容**:
 1. `mode.rs`: Insert モードへの遷移処理
-2. `keymap.rs`: Insert モードでのキー入力処理
-3. `buffer.rs`: 文字挿入、文字削除、改行挿入
-4. `editor.rs`: dirty フラグ管理
-5. Insert モード表示（ステータスバーに "-- INSERT --"）
+2. `buffer.rs`: 文字挿入、文字削除、改行挿入
+3. `editor.rs`: dirty フラグ管理
+4. Insert モード表示（ステータスバーに "-- INSERT --"）
+5. `main.rs`: Insert モードでのキー入力処理
 
 **キーバインド**:
 - Normal モードで `i`: Insert モード開始（カーソル位置）
@@ -168,9 +170,29 @@ struct Cursor {
 - Insert モードで `Backspace`: 文字削除
 - Insert モードで `Enter`: 改行
 
+**実装ノート**:
+- Insert モードでは行末+1の位置までカーソル移動可能（`a`, `A` コマンド、文字挿入後）
+- 文字挿入後は `cursor.move_right(size.0, line.len() + 1)` で移動（Normal モードの制限を回避）
+- 画面描画時に `termion::clear::UntilNewline` で各行末をクリア（古い文字が残らないように）
+- コマンドライン描画時に `termion::clear::CurrentLine` でクリア（モード切替時の表示が残らないように）
+- `editor.rs` で dirty フラグを管理（文字挿入・削除・改行・行結合時に true に設定）
+
+**修正したバグ**:
+1. 文字挿入時のカーソル位置ずれ（"hello" → "elloh" になる問題）
+   - 原因: Insert モード後の `move_right` が Normal モードの制限（行末まで）で動作していた
+   - 修正: Insert モードでは `line.len() + 1` を渡してカーソルが行末の次まで移動できるようにした
+2. 画面に古い文字が残る問題
+   - 原因: 各行を描画後に行末をクリアしていなかった
+   - 修正: `screen.rs` で `termion::clear::UntilNewline` を追加
+3. モード切替時に "-- INSERT --" が消えない問題
+   - 原因: コマンドラインを描画前にクリアしていなかった
+   - 修正: `screen.rs` の `draw_command_line` で `termion::clear::CurrentLine` を追加
+
 **Critical Files**:
-- `src/keymap.rs`
+- `src/main.rs`
+- `src/buffer.rs`
 - `src/editor.rs`
+- `src/screen.rs`
 
 ---
 
