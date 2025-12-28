@@ -59,7 +59,7 @@ impl Cursor {
         }
     }
     pub fn move_right(&mut self, max_cols: u16, line_len: usize) {
-        // 殻業の場合は移動しない
+        // 空行の場合は移動しない
         if line_len == 0 {
             return;
         }
@@ -76,7 +76,12 @@ impl Cursor {
     }
 
     pub fn move_to_line_end(&mut self, line_len: u16) {
-        self.x = line_len + 1;
+        if line_len == 0 {
+            self.x = 1;
+        } else {
+            self.x = line_len;
+        }
+
     }
 
     /// ファイル先頭に移動
@@ -102,7 +107,7 @@ impl Cursor {
         } else {
             // スクロールが必要な場合
             self.row_offset = last_line.saturating_sub(editor_rows - 1);
-            self.y = last_line - self.row_offset + 1
+            self.y = last_line - self.row_offset + 1;
         }
     }
 
