@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{self, BufRead, BufReader},
+    io::{self, BufRead, BufReader, Write},
     path::Path,
 };
 
@@ -21,5 +21,22 @@ impl FileIO {
         }
 
         Ok(buffer)
+    }
+
+    pub fn save<P: AsRef<Path>>(path: P, buffer: &Buffer) -> io::Result<()> {
+        // 既存ファイルがある場合は上書きする
+        let mut file = File::create(path)?;
+
+        for (i, row) in buffer.rows().iter().enumerate() {
+            // 最後の行以外は改行を追加
+            if i < buffer.len() - 1 {
+                writeln!(file, "{}", row.chars())?;
+            } else {
+                write!(file, "{}", row.chars())?;
+            }
+        }
+
+        file.flush()?;
+        Ok(())
     }
 }

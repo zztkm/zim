@@ -1,14 +1,8 @@
-use std::{
-    io::{self},
-};
+use std::io::{self};
 
 use termion::{event::Key, input::TermRead};
 use zim::{
-    cursor::Cursor,
-    editor::Editor,
-    file_io::FileIO,
-    mode::ModeManager,
-    screen::Screen,
+    cursor::Cursor, editor::Editor, file_io::FileIO, mode::{self, ModeManager}, screen::Screen,
     terminal::Terminal,
 };
 
@@ -37,6 +31,8 @@ fn main() -> io::Result<()> {
     let mut mode_manager = ModeManager::new();
     let mut command_buffer = String::new();
     let mut pending_key: Option<char> = None;
+    let prev_mode = mode_manager.current();
+    let mut status_message = String::new();
 
     // 初期描画
     Screen::refresh(
@@ -46,6 +42,7 @@ fn main() -> io::Result<()> {
         &command_buffer,
         editor.buffer(),
         editor.filename(),
+        &status_message,
     )?;
 
     // main loop
@@ -166,12 +163,59 @@ fn main() -> io::Result<()> {
             match key? {
                 Key::Char('\n') => {
                     // コマンド実行
-                    if command_buffer == "q" {
-                        break;
+                    match command_buffer.as_str() {
+                        "q" => {
+                            // 未保存の変更がある場合は警告
+                            if editor.is_dirty() {
+                                status_message = "No write since last change (add ! to override)".to_string();
+                                mode_manager.enter_normal();
+                                command_buffer.clear();
+                            } else {
+                                break;
+                            }
+                        }
+                        "q!" => {
+                            break;
+                        }
+                        "w" => {
+                            match editor.save() {
+                                Ok(_) => {
+                                    let bytes = editor.buffer().rows().iter()
+                                        .map(|r| r.chars().len())
+                                        .sum::<usize>();
+                                    status_message = format!("\"{}\" {}L {}B written",
+                                        editor.filename().unwrap_or("[No Name]"),
+                                        editor.buffer().len(),
+                                        bytes)
+                                }
+                                Err(e) => {
+                                    status_message = format!("Error: {}", e);
+                                }
+                            }
+                            mode_manager.enter_normal();
+                            command_buffer.clear();
+                        }
+                        "wq" => {
+                            match editor.save() {
+                                Ok(_) => break,
+                                Err(e) => {
+                                    status_message = format!("Error: {}", e);
+                                    mode_manager.enter_normal();
+                                    command_buffer.clear();
+                                }
+                            }
+                        }
+                        "" => {
+                            // 無視
+                            mode_manager.enter_normal();
+                            command_buffer.clear();
+                        }
+                        _ => {
+                            status_message = format!("Not an editor command: {}", command_buffer);
+                            mode_manager.enter_normal();
+                            command_buffer.clear();
+                        }
                     }
-                    // その他のコマンドは今は無視
-                    mode_manager.enter_normal();
-                    command_buffer.clear();
                 }
                 Key::Esc => {
                     // コマンドモードをキャンセル
@@ -237,6 +281,10 @@ fn main() -> io::Result<()> {
         // pending_key を更新する
         pending_key = next_pending_key;
 
+        if mode_manager.current() != prev_mode {
+            status_message.clear();
+        }
+
         cursor.scroll(editor_rows, editor.buffer().len());
 
         // キー入力後に再描画
@@ -247,6 +295,7 @@ fn main() -> io::Result<()> {
             &command_buffer,
             editor.buffer(),
             editor.filename(),
+            &status_message,
         )?;
     }
 

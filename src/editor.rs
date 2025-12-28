@@ -1,4 +1,6 @@
-use crate::buffer::Buffer;
+use std::io;
+
+use crate::{buffer::Buffer, file_io::FileIO};
 
 pub struct Editor {
     buffer: Buffer,
@@ -62,5 +64,19 @@ impl Editor {
     pub fn join_rows(&mut self, row: usize) {
         self.buffer.join_rows(row);
         self.dirty = true;
+    }
+
+    /// ファイルに保存
+    pub fn save(&mut self) -> io::Result<()> {
+        if let Some(filename) = &self.filename {
+            FileIO::save(filename, &self.buffer)?;
+            self.dirty = false;
+            Ok(())
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "No filename specified",
+            ))
+        }
     }
 }

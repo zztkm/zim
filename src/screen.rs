@@ -80,6 +80,7 @@ impl Screen {
         stdout: &mut impl Write,
         mode: Mode,
         command_buffer: &str,
+        status_message: &str,
     ) -> io::Result<()> {
         write!(stdout, "\r\n")?;
         // 行をクリアしてから描画
@@ -90,7 +91,7 @@ impl Screen {
                 write!(stdout, ":{}", command_buffer)?;
             }
             Mode::Normal => {
-                write!(stdout, " ")?;
+                write!(stdout, "{}", status_message)?;
             }
             Mode::Insert => {
                 write!(stdout, "-- INSERT --")?;
@@ -106,6 +107,7 @@ impl Screen {
         command_buffer: &str,
         buffer: &Buffer,
         filename: Option<&str>,
+        status_message: &str,
     ) -> io::Result<()> {
         // カーソルを隠す
         write!(stdout, "{}", termion::cursor::Hide)?;
@@ -121,7 +123,7 @@ impl Screen {
         Self::draw_status_bar(stdout, filename, buffer.len(), cursor.file_row())?;
 
         // コマンドライン / ステータスライン (最下行)
-        Self::draw_command_line(stdout, mode, command_buffer)?;
+        Self::draw_command_line(stdout, mode, command_buffer, status_message)?;
 
         // カーソル位置に移動
         match mode {
