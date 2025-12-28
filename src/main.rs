@@ -216,7 +216,7 @@ fn main() -> io::Result<()> {
                             editor.buffer().row(prev_row).map(|r| r.len()).unwrap_or(0);
                         editor.join_rows(row);
                         cursor.move_up();
-                        cursor.move_to_line_end(prev_line_len as u16);
+                        cursor.move_to_line_end((prev_line_len as u16) + 1);
                     }
                 }
                 Key::Char(ch) => {

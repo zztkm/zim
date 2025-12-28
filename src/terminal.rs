@@ -43,6 +43,8 @@ impl Terminal {
 
 impl Drop for Terminal {
     fn drop(&mut self) {
+        // カーソルスタイルをリセット
+        let _ = write!(self.stdout, "{}", termion::cursor::SteadyBlock);
         // 終了時の画面クリア
         let _ = self.clear_screen();
     }

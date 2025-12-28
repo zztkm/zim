@@ -139,6 +139,18 @@ impl Screen {
             }
         }
 
+        // カーソルスタイルを設定
+        match mode {
+            Mode::Insert => {
+                // Insert モードでは縦棒カーソル
+                write!(stdout, "{}", termion::cursor::SteadyBar)?;
+            }
+            Mode::Normal | Mode::Command => {
+                // Normal/Command モードではブロックカーソル
+                write!(stdout, "{}", termion::cursor::SteadyBlock)?;
+            }
+        }
+
         // カーソル表示
         write!(stdout, "{}", termion::cursor::Show)?;
         stdout.flush()?;
