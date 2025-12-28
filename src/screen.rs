@@ -87,6 +87,9 @@ impl Screen {
             Mode::Normal => {
                 write!(stdout, " ")?;
             }
+            Mode::Insert => {
+                write!(stdout, "-- INSERT --")?;
+            }
         }
         Ok(())
     }
@@ -125,7 +128,7 @@ impl Screen {
                     termion::cursor::Goto((command_buffer.len() as u16) + 2, size.1)
                 )?;
             }
-            Mode::Normal => {
+            Mode::Normal | Mode::Insert => {
                 // ノーマルモード時はエディタ上にカーソル
                 write!(stdout, "{}", termion::cursor::Goto(cursor.x(), cursor.y()))?;
             }

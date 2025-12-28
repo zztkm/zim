@@ -1,8 +1,14 @@
-use std::io::{self};
+use std::{
+    io::{self},
+};
 
 use termion::{event::Key, input::TermRead};
 use zim::{
-    buffer::Buffer, cursor::Cursor, file_io::FileIO, mode::ModeManager, screen::Screen,
+    cursor::Cursor,
+    editor::Editor,
+    file_io::FileIO,
+    mode::ModeManager,
+    screen::Screen,
     terminal::Terminal,
 };
 
@@ -13,17 +19,17 @@ fn main() -> io::Result<()> {
 
     // コマンドライン引数からファイル名を取得する
     let args: Vec<String> = std::env::args().collect();
-    let (buffer, filename) = if args.len() > 1 {
+    let mut editor = if args.iter().len() > 1 {
         let path = &args[1];
         match FileIO::open(path) {
-            Ok(buf) => (buf, Some(path.clone())),
+            Ok(buf) => Editor::from_buffer(buf, Some(path.clone())),
             Err(e) => {
                 eprintln!("Error opening file: {}", e);
                 return Err(e);
             }
         }
     } else {
-        (Buffer::new(), None)
+        Editor::new()
     };
 
     // 状態初期化
@@ -38,8 +44,8 @@ fn main() -> io::Result<()> {
         &cursor,
         mode_manager.current(),
         &command_buffer,
-        &buffer,
-        filename.as_deref(),
+        editor.buffer(),
+        editor.filename(),
     )?;
 
     // main loop
@@ -56,13 +62,51 @@ fn main() -> io::Result<()> {
                     mode_manager.enter_command();
                     command_buffer.clear();
                 }
-                // vim キーバインド
+                Key::Char('i') => {
+                    mode_manager.enter_insert();
+                }
+                Key::Char('I') => {
+                    // 行頭から Insert mode
+                    cursor.move_to_line_start();
+                    mode_manager.enter_insert();
+                }
+                Key::Char('a') => {
+                    // カーソルの後ろから Insert mode
+                    let row = cursor.file_row();
+                    if let Some(line) = editor.buffer().row(row) {
+                        cursor.move_right(size.0, line.len());
+                    }
+                    mode_manager.enter_insert();
+                }
+                Key::Char('A') => {
+                    // 行末から Insert mode
+                    let row = cursor.file_row();
+                    if let Some(line) = editor.buffer().row(row) {
+                        cursor.move_to_line_end(line.len() as u16);
+                    }
+                    mode_manager.enter_insert();
+                }
+                Key::Char('o') => {
+                    // 下に新しい行を追加して Insert mode
+                    let row = cursor.file_row();
+                    editor.buffer_mut().insert_row(row + 1, String::new());
+                    cursor.move_down(editor_rows, editor.buffer().len());
+                    cursor.move_to_line_start();
+                    mode_manager.enter_insert();
+                }
+                Key::Char('O') => {
+                    // 上に新しい行を追加して Insert mode
+                    let row = cursor.file_row();
+                    editor.buffer_mut().insert_row(row, String::new());
+                    cursor.move_to_line_start();
+                    mode_manager.enter_insert();
+                }
                 Key::Char('h') => cursor.move_left(),
                 Key::Char('j') => {
-                    cursor.move_down(editor_rows, buffer.len());
+                    cursor.move_down(editor_rows, editor.buffer().len());
                     // 移動後の行に合わせて x 座標を調整する
                     let row = cursor.file_row();
-                    if let Some(line) = buffer.row(row) {
+                    if let Some(line) = editor.buffer().row(row) {
                         cursor.adjust_cursor_x(line.len());
                     }
                 }
@@ -70,13 +114,13 @@ fn main() -> io::Result<()> {
                     cursor.move_up();
                     // 移動後の行に合わせて x 座標を調整する
                     let row = cursor.file_row();
-                    if let Some(line) = buffer.row(row) {
+                    if let Some(line) = editor.buffer().row(row) {
                         cursor.adjust_cursor_x(line.len());
                     }
                 }
                 Key::Char('l') => {
                     let row = cursor.file_row();
-                    if let Some(line) = buffer.row(row) {
+                    if let Some(line) = editor.buffer().row(row) {
                         cursor.move_right(size.0, line.len());
                     }
                 }
@@ -84,7 +128,7 @@ fn main() -> io::Result<()> {
                 Key::Char('$') => {
                     // 現在の行の長さを取得して行末に移動
                     let row = cursor.file_row();
-                    if let Some(line) = buffer.row(row) {
+                    if let Some(line) = editor.buffer().row(row) {
                         cursor.move_to_line_end(line.len() as u16);
                     }
                 }
@@ -94,7 +138,7 @@ fn main() -> io::Result<()> {
                         cursor.move_to_top();
                         // 移動後の行に合わせて x 座標を調整する
                         let row = cursor.file_row();
-                        if let Some(line) = buffer.row(row) {
+                        if let Some(line) = editor.buffer().row(row) {
                             cursor.adjust_cursor_x(line.len());
                         }
                     } else {
@@ -102,10 +146,10 @@ fn main() -> io::Result<()> {
                     }
                 }
                 Key::Char('G') => {
-                    cursor.move_to_bottom(buffer.len(), editor_rows);
+                    cursor.move_to_bottom(editor.buffer().len(), editor_rows);
                     // 移動後の行に合わせて x 座標を調整する
                     let row = cursor.file_row();
-                    if let Some(line) = buffer.row(row) {
+                    if let Some(line) = editor.buffer().row(row) {
                         cursor.adjust_cursor_x(line.len());
                     }
                 }
@@ -133,12 +177,59 @@ fn main() -> io::Result<()> {
                 }
                 _ => {}
             }
+        } else if mode_manager.is_insert() {
+            match key? {
+                Key::Esc => {
+                    mode_manager.enter_normal();
+                    cursor.move_left();
+                }
+                Key::Char('\n') => {
+                    // 改行
+                    let row = cursor.file_row();
+                    let col = (cursor.x() - 1) as usize;
+                    editor.insert_newline(row, col);
+                    cursor.move_down(editor_rows, editor.buffer().len());
+                    cursor.move_to_line_start();
+                    // TODO:
+                    // 設定に応じて、改行したときに前の行とインデントを合わせることができるようにする
+                }
+                Key::Backspace => {
+                    // 削除
+                    let row = cursor.file_row();
+                    let col = (cursor.x() - 1) as usize;
+
+                    if col > 0 {
+                        // 文字を削除
+                        editor.delete_char(row, col - 1);
+                        cursor.move_left();
+                    } else if row > 0 {
+                        // 行頭で Backspace + 前の行と結合
+                        let prev_row = row - 1;
+                        let prev_line_len =
+                            editor.buffer().row(prev_row).map(|r| r.len()).unwrap_or(0);
+                        editor.join_rows(row);
+                        cursor.move_up();
+                        cursor.move_to_line_end(prev_line_len as u16);
+                    }
+                }
+                Key::Char(ch) => {
+                    // 文字挿入
+                    let row = cursor.file_row();
+                    let col = (cursor.x() - 1) as usize;
+                    editor.insert_char(row, col, ch);
+                    cursor.move_right(
+                        size.0,
+                        editor.buffer().row(row).map(|r| r.len()).unwrap_or(0),
+                    );
+                }
+                _ => {}
+            }
         }
 
         // pending_key を更新する
         pending_key = next_pending_key;
 
-        cursor.scroll(editor_rows, buffer.len());
+        cursor.scroll(editor_rows, editor.buffer().len());
 
         // キー入力後に再描画
         Screen::refresh(
@@ -146,8 +237,8 @@ fn main() -> io::Result<()> {
             &cursor,
             mode_manager.current(),
             &command_buffer,
-            &buffer,
-            filename.as_deref(),
+            editor.buffer(),
+            editor.filename(),
         )?;
     }
 

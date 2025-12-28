@@ -2,6 +2,7 @@
 pub enum Mode {
     Normal,
     Command,
+    Insert,
 }
 
 pub struct ModeManager {
@@ -27,11 +28,19 @@ impl ModeManager {
         self.current = Mode::Normal;
     }
 
+    pub fn enter_insert(&mut self) {
+        self.current = Mode::Insert;
+    }
+
     pub fn is_normal(&self) -> bool {
         self.current == Mode::Normal
     }
 
     pub fn is_command(&self) -> bool {
         self.current == Mode::Command
+    }
+
+    pub fn is_insert(&self) -> bool {
+        self.current == Mode::Insert
     }
 }
