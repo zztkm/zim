@@ -32,9 +32,12 @@ impl Screen {
                     let display_text = if text.len() > 80 { &text[..80] } else { text };
                     write!(stdout, "{}", display_text)?;
                 }
+                // 行末までクリア
+                write!(stdout, "{}", termion::clear::UntilNewline)?;
             } else {
                 // ファイルの終端を超えたら ~ を表示
                 write!(stdout, "~")?;
+                write!(stdout, "{}", termion::clear::UntilNewline)?;
             }
 
             if i < editor_rows - 1 {
@@ -79,6 +82,8 @@ impl Screen {
         command_buffer: &str,
     ) -> io::Result<()> {
         write!(stdout, "\r\n")?;
+        // 行をクリアしてから描画
+        write!(stdout, "{}", termion::clear::CurrentLine)?;
         match mode {
             Mode::Command => {
                 // コマンドバッファをそのまま表示（: は含まれていない前提）

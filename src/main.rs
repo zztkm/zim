@@ -74,7 +74,8 @@ fn main() -> io::Result<()> {
                     // カーソルの後ろから Insert mode
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
-                        cursor.move_right(size.0, line.len());
+                        // Insert mode では行末+1まで移動可能
+                        cursor.move_right(size.0, line.len() + 1);
                     }
                     mode_manager.enter_insert();
                 }
@@ -82,7 +83,13 @@ fn main() -> io::Result<()> {
                     // 行末から Insert mode
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
-                        cursor.move_to_line_end(line.len() as u16);
+                        // Insert mode では行末の1つ後ろに配置
+                        let line_len = line.len() as u16;
+                        if line_len == 0 {
+                            cursor.move_to_line_start();
+                        } else {
+                            cursor.move_to_line_end(line_len + 1);
+                        }
                     }
                     mode_manager.enter_insert();
                 }
@@ -217,9 +224,10 @@ fn main() -> io::Result<()> {
                     let row = cursor.file_row();
                     let col = (cursor.x() - 1) as usize;
                     editor.insert_char(row, col, ch);
+                    // Insert モードでは行末の次の位置まで移動可能
                     cursor.move_right(
                         size.0,
-                        editor.buffer().row(row).map(|r| r.len()).unwrap_or(0),
+                        editor.buffer().row(row).map(|r| r.len()).unwrap_or(0) + 1,
                     );
                 }
                 _ => {}
