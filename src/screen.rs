@@ -1,7 +1,7 @@
-use std::fmt::format;
-use std::io::{self, Write, stdout};
+use std::io::{self, Write};
 use termion;
 
+use crate::UI_HEIGHT;
 use crate::buffer::Buffer;
 use crate::cursor::Cursor;
 use crate::mode::Mode;
@@ -9,14 +9,19 @@ use crate::mode::Mode;
 pub struct Screen;
 
 impl Screen {
+    pub fn editor_rows(rows: u16) -> u16 {
+        rows.saturating_sub(UI_HEIGHT)
+    }
+
     pub fn draw_rows(
         stdout: &mut impl Write,
         rows: u16,
         buffer: &Buffer,
         row_offset: u16,
     ) -> io::Result<()> {
-        // -2 はステータスバー / コマンドライン用
-        for i in 0..rows - 2 {
+        let editor_rows = Self::editor_rows(rows);
+
+        for i in 0..editor_rows {
             let file_row = (row_offset + i) as usize;
 
             if file_row < buffer.len() {
@@ -32,7 +37,7 @@ impl Screen {
                 write!(stdout, "~")?;
             }
 
-            if i < rows - 3 {
+            if i < editor_rows - 1 {
                 write!(stdout, "\r\n")?;
             }
         }
@@ -53,18 +58,43 @@ impl Screen {
         write!(stdout, "{}", status)?;
 
         // 現在の行番号の右端に表示
-        let pos = format!(" {}/{} ", cursor_file_row + 1, buffer_len);
-        let padding = 80usize.saturating_sub(status.len().saturating_sub(pos.len()));
+        let current_line = if buffer_len > 0 {
+            cursor_file_row + 1
+        } else {
+            0
+        };
+        let pos = format!(" {}/{} ", current_line, buffer_len);
+        let padding = 80usize
+            .saturating_sub(status.len())
+            .saturating_sub(pos.len());
         write!(stdout, "{}{}", " ".repeat(padding), pos)?;
 
         write!(stdout, "{}", termion::style::Reset)?;
         Ok(())
     }
 
+    pub fn draw_command_line(
+        stdout: &mut impl Write,
+        mode: Mode,
+        command_buffer: &str,
+    ) -> io::Result<()> {
+        write!(stdout, "\r\n")?;
+        match mode {
+            Mode::Command => {
+                // コマンドバッファをそのまま表示（: は含まれていない前提）
+                write!(stdout, ":{}", command_buffer)?;
+            }
+            Mode::Normal => {
+                write!(stdout, " ")?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn refresh(
         stdout: &mut impl Write,
         cursor: &Cursor,
-        mode: &Mode,
+        mode: Mode,
         command_buffer: &str,
         buffer: &Buffer,
         filename: Option<&str>,
@@ -83,15 +113,7 @@ impl Screen {
         Self::draw_status_bar(stdout, filename, buffer.len(), cursor.file_row())?;
 
         // コマンドライン / ステータスライン (最下行)
-        write!(stdout, "\r\n")?;
-        match mode {
-            Mode::Command => {
-                write!(stdout, ":{}", command_buffer)?;
-            }
-            Mode::Normal => {
-                write!(stdout, " ")?;
-            }
-        }
+        Self::draw_command_line(stdout, mode, command_buffer)?;
 
         // カーソル位置に移動
         match mode {
@@ -99,8 +121,8 @@ impl Screen {
                 // コマンドモード時はコマンドライン上にカーソル
                 write!(
                     stdout,
-                    ":{}",
-                    termion::cursor::Goto((command_buffer.len() + 2) as u16, size.1)
+                    "{}",
+                    termion::cursor::Goto((command_buffer.len() as u16) + 2, size.1)
                 )?;
             }
             Mode::Normal => {

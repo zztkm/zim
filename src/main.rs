@@ -1,7 +1,4 @@
-use std::{
-    env::args,
-    io::{self, stdout},
-};
+use std::io::{self};
 
 use termion::{event::Key, input::TermRead};
 use zim::{
@@ -33,12 +30,13 @@ fn main() -> io::Result<()> {
     let mut cursor = Cursor::new();
     let mut mode_manager = ModeManager::new();
     let mut command_buffer = String::new();
+    let mut pending_key: Option<char> = None;
 
     // 初期描画
     Screen::refresh(
         terminal.stdout(),
         &cursor,
-        &mode_manager.current(),
+        mode_manager.current(),
         &command_buffer,
         &buffer,
         filename.as_deref(),
@@ -47,8 +45,11 @@ fn main() -> io::Result<()> {
     // main loop
     let stdin = io::stdin();
     let size = terminal.size();
+    let editor_rows = Screen::editor_rows(size.1);
 
     for key in stdin.keys() {
+        let mut next_pending_key: Option<char> = None;
+
         if mode_manager.is_normal() {
             match key? {
                 Key::Char(':') => {
@@ -57,8 +58,7 @@ fn main() -> io::Result<()> {
                 }
                 // vim キーバインド
                 Key::Char('h') => cursor.move_left(),
-                // ステータスライン分 - 1
-                Key::Char('j') => cursor.move_down(size.1 - 1),
+                Key::Char('j') => cursor.move_down(editor_rows),
                 Key::Char('k') => cursor.move_up(),
                 Key::Char('l') => cursor.move_right(size.0),
                 Key::Char('0') => cursor.move_to_line_start(),
@@ -68,6 +68,17 @@ fn main() -> io::Result<()> {
                     if let Some(line) = buffer.row(row) {
                         cursor.move_to_line_end(line.len() as u16);
                     }
+                }
+                Key::Char('g') => {
+                    if pending_key == Some('g') {
+                        // gg: ファイル先頭に移動する
+                        cursor.move_to_top();
+                    } else {
+                        next_pending_key = Some('g');
+                    }
+                }
+                Key::Char('G') => {
+                    cursor.move_to_bottom(buffer.len(), editor_rows);
                 }
                 _ => {}
             }
@@ -95,11 +106,16 @@ fn main() -> io::Result<()> {
             }
         }
 
+        // pending_key を更新する
+        pending_key = next_pending_key;
+
+        cursor.scroll(editor_rows, buffer.len());
+
         // キー入力後に再描画
         Screen::refresh(
             terminal.stdout(),
             &cursor,
-            &mode_manager.current(),
+            mode_manager.current(),
             &command_buffer,
             &buffer,
             filename.as_deref(),

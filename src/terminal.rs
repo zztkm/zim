@@ -37,7 +37,7 @@ impl Terminal {
             termion::clear::All,
             termion::cursor::Goto(1, 1)
         )?;
-        io::stdout().flush()
+        self.stdout.flush()
     }
 }
 

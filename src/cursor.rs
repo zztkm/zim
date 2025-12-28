@@ -59,8 +59,36 @@ impl Cursor {
         self.x = line_len + 1;
     }
 
-    // スクロール処理
-    pub fn scroll(&mut self, screen_rows: u16, buffer_len: usize) {
+    /// ファイル先頭に移動
+    pub fn move_to_top(&mut self) {
+        self.y = 1;
+        self.row_offset = 0;
+    }
+
+    /// ファイル末尾に移動
+    pub fn move_to_bottom(&mut self, buffer_len: usize, editor_rows: u16) {
+        if buffer_len == 0 {
+            self.y = 1;
+            self.row_offset = 0;
+            return;
+        }
+
+        let last_line = buffer_len.saturating_sub(1) as u16;
+
+        // 画面に収まる場合
+        if last_line < editor_rows {
+            self.y = last_line + 1;
+            self.row_offset = 0;
+        } else {
+            // スクロールが必要な場合
+            self.row_offset = last_line.saturating_sub(editor_rows - 1);
+            self.y = last_line - self.row_offset + 1
+        }
+    }
+
+    /// スクロール処理
+    /// editor_rows: エディタ領域の行数(ステータスバーなどを除く)
+    pub fn scroll(&mut self, editor_rows: u16, buffer_len: usize) {
         let file_row = self.row_offset + self.y - 1;
 
         // 画面上端より上にカーソルがある場合
@@ -69,8 +97,8 @@ impl Cursor {
         }
 
         // 画面下端より下にカーソルがある場合
-        if file_row >= self.row_offset + screen_rows - 1 {
-            self.row_offset = file_row.saturating_sub(screen_rows - 2);
+        if file_row >= self.row_offset + editor_rows {
+            self.row_offset = file_row.saturating_sub(editor_rows - 1);
         }
 
         // カーソルが画面内に収まるように調整
