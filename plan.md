@@ -196,14 +196,17 @@ struct Cursor {
 
 ---
 
-### フェーズ4: ファイル保存
+### フェーズ4: ファイル保存 ✅
 **目標**: 編集内容を保存できる
+
+**ステータス**: 完了
 
 **実装内容**:
 1. `file_io.rs`: ファイル保存処理
-2. `keymap.rs`: Command モード処理（`:w`, `:wq`, `:q!`）
-3. Command バッファ管理（`:` 入力時の処理）
-4. 未保存時の警告（`:q` で dirty の場合）
+2. `main.rs`: Command モード処理（`:w`, `:wq`, `:q!`）
+3. `editor.rs`: 保存メソッドと dirty フラグ管理
+4. `screen.rs`: ステータスメッセージ表示機能
+5. 未保存時の警告（`:q` で dirty の場合）
 
 **キーバインド**:
 - `:w`: 保存
@@ -211,9 +214,25 @@ struct Cursor {
 - `:wq`: 保存して終了
 - `:q!`: 強制終了
 
+**実装ノート**:
+- ファイル保存時は改行コード LF (`\n`) のみ使用
+- 最後の行には改行を付けない（vim の標準動作）
+- 保存成功時に "written" メッセージを表示（行数とバイト数）
+- 未保存で `:q` 実行時は "No write since last change" 警告
+- ステータスメッセージはモード変更時に自動クリア
+- `:w` 成功時に dirty フラグをクリア
+
+**追加機能**:
+- カーソルスタイルのモード別切り替え
+  - Insert モード: 縦棒カーソル (`termion::cursor::SteadyBar`)
+  - Normal/Command モード: ブロックカーソル (`termion::cursor::SteadyBlock`)
+
 **Critical Files**:
 - `src/file_io.rs`
-- `src/keymap.rs`
+- `src/editor.rs`
+- `src/main.rs`
+- `src/screen.rs`
+- `src/terminal.rs`
 
 ---
 
