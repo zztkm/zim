@@ -26,6 +26,27 @@ impl Editor {
         }
     }
 
+    pub fn open_file(&mut self, filename: String) -> io::Result<()> {
+        let buffer = FileIO::open(&filename)?;
+        // Editor のプロパティを更新する
+        self.buffer = buffer;
+        self.filename = Some(filename);
+        self.dirty = false;
+        Ok(())
+    }
+
+    pub fn reload(&mut self) -> io::Result<()> {
+        if let Some(filename) = &self.filename {
+            let buffer = FileIO::open(&filename)?;
+            // Editor のプロパティを更新する
+            self.buffer = buffer;
+            self.dirty = false;
+            Ok(())
+        } else {
+            Err(io::Error::new(io::ErrorKind::NotFound, "No file name"))
+        }
+    }
+
     pub fn buffer(&self) -> &Buffer {
         &self.buffer
     }

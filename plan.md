@@ -236,6 +236,91 @@ struct Cursor {
 
 ---
 
+### フェーズ4.5: ファイル切り替え (`:e` コマンド)
+**目標**: 別のファイルを開く、または現在のファイルを再読み込みできる
+
+**実装内容**:
+1. `main.rs`: `:e` コマンドの処理
+2. `editor.rs`: ファイルロード/リロード機能
+3. コマンド引数のパース（`:e filename` 形式）
+4. 未保存時の警告（`:e` で dirty の場合）
+5. 強制実行（`:e!`）
+
+**キーバインド**:
+- `:e filename`: 指定したファイルを開く
+- `:e`: 現在のファイルを再読み込み（変更を破棄）
+- `:e!`: 強制的に再読み込み（未保存の変更を破棄）
+- `:e! filename`: 強制的に指定ファイルを開く
+
+**実装ノート**:
+- コマンドバッファから引数を抽出（空白で分割）
+- `:e filename` 形式の場合:
+  - dirty なら警告を出して中止
+  - `!` 付きなら警告なしで実行
+  - ファイルが存在しなければエラー
+  - 成功時はカーソルを先頭に移動
+- `:e` 形式の場合:
+  - 現在のファイル名で再読み込み
+  - ファイル名がない場合はエラー
+- 新しいファイルを開いた際は:
+  - Buffer を新規作成
+  - Cursor を初期位置に戻す
+  - dirty フラグをクリア
+  - filename を更新
+
+**実装の詳細**:
+
+**コマンド引数のパース**:
+```rust
+// "e filename" -> ["e", "filename"]
+// "e! filename" -> ["e!", "filename"]
+let parts: Vec<&str> = command_buffer.split_whitespace().collect();
+let cmd = parts.get(0).unwrap_or(&"");
+let arg = parts.get(1).map(|s| s.to_string());
+```
+
+**editor.rs に追加するメソッド**:
+```rust
+/// ファイルを開く/切り替える
+pub fn open_file(&mut self, filename: String) -> io::Result<()> {
+    let buffer = FileIO::open(&filename)?;
+    self.buffer = buffer;
+    self.filename = Some(filename);
+    self.dirty = false;
+    Ok(())
+}
+
+/// 現在のファイルを再読み込み
+pub fn reload(&mut self) -> io::Result<()> {
+    if let Some(filename) = &self.filename {
+        let buffer = FileIO::open(filename)?;
+        self.buffer = buffer;
+        self.dirty = false;
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "No file name",
+        ))
+    }
+}
+```
+
+**エラーハンドリング**:
+- ファイルが見つからない: "Cannot open file: [filename]"
+- ファイル名なしで `:e`: "No file name"
+- 未保存で実行: "No write since last change (add ! to override)"
+
+**カーソルリセット**:
+- ファイル切り替え時は cursor を初期位置に戻す
+- `cursor = Cursor::new()` で再初期化
+
+**Critical Files**:
+- `src/editor.rs`
+- `src/main.rs`
+
+---
+
 ### フェーズ5: 追加のNormalモードコマンド
 **目標**: vim らしい編集操作ができる
 

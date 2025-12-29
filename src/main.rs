@@ -2,7 +2,7 @@ use std::io::{self};
 
 use termion::{event::Key, input::TermRead};
 use zim::{
-    cursor::Cursor, editor::Editor, file_io::FileIO, mode::{self, ModeManager}, screen::Screen,
+    cursor::Cursor, editor::Editor, file_io::FileIO, mode::ModeManager, screen::Screen,
     terminal::Terminal,
 };
 
@@ -162,12 +162,16 @@ fn main() -> io::Result<()> {
         } else if mode_manager.is_command() {
             match key? {
                 Key::Char('\n') => {
+                    let parts: Vec<&str> = command_buffer.split_whitespace().collect();
+                    let cmd = parts.get(0).copied().unwrap_or("");
+
                     // コマンド実行
-                    match command_buffer.as_str() {
+                    match cmd {
                         "q" => {
                             // 未保存の変更がある場合は警告
                             if editor.is_dirty() {
-                                status_message = "No write since last change (add ! to override)".to_string();
+                                status_message =
+                                    "No write since last change (add ! to override)".to_string();
                                 mode_manager.enter_normal();
                                 command_buffer.clear();
                             } else {
@@ -180,13 +184,18 @@ fn main() -> io::Result<()> {
                         "w" => {
                             match editor.save() {
                                 Ok(_) => {
-                                    let bytes = editor.buffer().rows().iter()
+                                    let bytes = editor
+                                        .buffer()
+                                        .rows()
+                                        .iter()
                                         .map(|r| r.chars().len())
                                         .sum::<usize>();
-                                    status_message = format!("\"{}\" {}L {}B written",
+                                    status_message = format!(
+                                        "\"{}\" {}L {}B written",
                                         editor.filename().unwrap_or("[No Name]"),
                                         editor.buffer().len(),
-                                        bytes)
+                                        bytes
+                                    )
                                 }
                                 Err(e) => {
                                     status_message = format!("Error: {}", e);
@@ -195,15 +204,54 @@ fn main() -> io::Result<()> {
                             mode_manager.enter_normal();
                             command_buffer.clear();
                         }
-                        "wq" => {
-                            match editor.save() {
-                                Ok(_) => break,
-                                Err(e) => {
-                                    status_message = format!("Error: {}", e);
-                                    mode_manager.enter_normal();
-                                    command_buffer.clear();
+                        "wq" => match editor.save() {
+                            Ok(_) => break,
+                            Err(e) => {
+                                status_message = format!("Error: {}", e);
+                                mode_manager.enter_normal();
+                                command_buffer.clear();
+                            }
+                        },
+                        "e" | "e!" => {
+                            let force = cmd == "e!";
+
+                            if let Some(filename) = parts.get(1) {
+                                if !force && editor.is_dirty() {
+                                    status_message =
+                                        "No write since last change (add ! to override)"
+                                            .to_string();
+                                } else {
+                                    match editor.open_file(filename.to_string()) {
+                                        Ok(_) => {
+                                            status_message = format!("\"{}\" loaded", filename);
+                                            cursor = Cursor::new();
+                                        }
+                                        Err(e) => {
+                                            status_message = format!("Cannot open file: {}", e)
+                                        }
+                                    }
+                                }
+                            } else {
+                                // ファイル名なしのパターン
+                                if !force && editor.is_dirty() {
+                                    status_message =
+                                        "No write since last change (add ! to override)"
+                                            .to_string();
+                                } else {
+                                    match editor.reload() {
+                                        Ok(_) => {
+                                            // このときはカーソル位置をリセットしない(いきなり位置が変わるとびっくりするため
+                                            status_message = format!(
+                                                "\"{}\" reloaded",
+                                                editor.filename().unwrap_or("[No Name]")
+                                            );
+                                        }
+                                        Err(e) => status_message = format!("Error: {}", e),
+                                    }
                                 }
                             }
+                            mode_manager.enter_normal();
+                            command_buffer.clear();
                         }
                         "" => {
                             // 無視
