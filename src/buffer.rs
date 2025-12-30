@@ -35,11 +35,15 @@ impl Row {
             self.render = self.chars.clone();
         }
     }
-    /// 指定位置の文字を削除
-    pub fn delete_char(&mut self, at: usize) {
+
+    /// 指定位置の文字を削除し、削除した文字を返す
+    pub fn delete_char(&mut self, at: usize) -> Option<char> {
         if at < self.chars.len() {
-            self.chars.remove(at);
+            let ch = self.chars.remove(at);
             self.render = self.chars.clone();
+            Some(ch)
+        } else {
+            None
         }
     }
     /// 指定位置から末尾までを分割して返す
@@ -111,9 +115,11 @@ impl Buffer {
     }
 
     /// 指定行の文字を削除する
-    pub fn delete_char(&mut self, row: usize, col: usize) {
+    pub fn delete_char(&mut self, row: usize, col: usize) -> Option<char> {
         if let Some(r) = self.rows.get_mut(row) {
-            r.delete_char(col);
+            r.delete_char(col)
+        } else {
+            None
         }
     }
 
@@ -142,5 +148,20 @@ impl Buffer {
 
     pub fn row_mut(&mut self, index: usize) -> Option<&mut Row> {
         self.rows.get_mut(index)
+    }
+
+    /// 指定行を削除して、その行の内容を返す
+    pub fn delete_row_with_content(&mut self, at: usize) -> Option<String> {
+        if at < self.rows.iter().len() {
+            let row = self.rows.remove(at);
+            Some(row.chars().to_string())
+        } else {
+            None
+        }
+    }
+
+    /// 指定行の内容を取得
+    pub fn get_row_content(&self, at: usize) -> Option<String> {
+        self.rows.get(at).map(|r| r.chars().to_string())
     }
 }

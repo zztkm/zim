@@ -105,6 +105,64 @@ fn main() -> io::Result<()> {
                     cursor.move_to_line_start();
                     mode_manager.enter_insert();
                 }
+                Key::Char('x') => {
+                    let row = cursor.file_row();
+                    let col = (cursor.x() - 1) as usize;
+                    if editor.delete_char_at_cursor(row, col) {
+                        // 削除成功後、行末を超えないように調整
+                        if let Some(line) = editor.buffer().row(row) {
+                            if line.len() > 0 && cursor.x() > line.len() as u16 {
+                                cursor.move_left();
+                            }
+                        }
+                    }
+                    status_message.clear();
+                }
+                Key::Char('d') => {
+                    // dd コマンド実行時
+                    if pending_key == Some('d') {
+                        let row = cursor.file_row();
+                        if editor.delete_line(row) {
+                            // 削除成功後、カーソル位置調整
+                            let buffer_len = editor.buffer().len();
+                            let line_len = if buffer_len > 0 {
+                                editor
+                                    .buffer()
+                                    .row(cursor.file_row().min(buffer_len - 1))
+                                    .map(|r| r.len())
+                                    .unwrap_or(0)
+                            } else {
+                                0
+                            };
+                            cursor.ensure_within_bounds(buffer_len, line_len, editor_rows);
+                        }
+                    } else {
+                        next_pending_key = Some('d');
+                    }
+                    status_message.clear();
+                }
+                Key::Char('y') => {
+                    // yy
+                    if pending_key == Some('y') {
+                        let row = cursor.file_row();
+                        editor.yank_line(row);
+                    } else {
+                        next_pending_key = Some('y');
+                    }
+                    status_message.clear();
+                }
+                Key::Char('p') => {
+                    let row = cursor.file_row();
+                    if editor.paste_below(row) {
+                        cursor.move_down(editor_rows, editor.buffer().len());
+                    }
+                    status_message.clear();
+                }
+                Key::Char('P') => {
+                    let row = cursor.file_row();
+                    editor.paste_above(row);
+                    status_message.clear();
+                }
                 Key::Char('h') => cursor.move_left(),
                 Key::Char('j') => {
                     cursor.move_down(editor_rows, editor.buffer().len());
@@ -250,14 +308,19 @@ fn main() -> io::Result<()> {
                                             // (更新前のカーソル位置よりファイルが短くなった場合などに必要
                                             let buffer_len = editor.buffer().len();
                                             let line_len = if buffer_len > 0 {
-                                                editor.buffer()
+                                                editor
+                                                    .buffer()
                                                     .row(cursor.file_row().min(buffer_len - 1))
                                                     .map(|r| r.len())
                                                     .unwrap_or(0)
                                             } else {
                                                 0
                                             };
-                                            cursor.ensure_within_bounds(buffer_len, line_len, editor_rows);
+                                            cursor.ensure_within_bounds(
+                                                buffer_len,
+                                                line_len,
+                                                editor_rows,
+                                            );
                                         }
                                         Err(e) => status_message = format!("Error: {}", e),
                                     }
