@@ -236,13 +236,15 @@ struct Cursor {
 
 ---
 
-### フェーズ4.5: ファイル切り替え (`:e` コマンド)
+### フェーズ4.5: ファイル切り替え (`:e` コマンド) ✅
 **目標**: 別のファイルを開く、または現在のファイルを再読み込みできる
 
+**ステータス**: 完了
+
 **実装内容**:
-1. `main.rs`: `:e` コマンドの処理
-2. `editor.rs`: ファイルロード/リロード機能
-3. コマンド引数のパース（`:e filename` 形式）
+1. `editor.rs`: `open_file` と `reload` メソッド
+2. `main.rs`: `:e` コマンドの処理とコマンド引数パース
+3. `cursor.rs`: `ensure_within_bounds` メソッド（カーソル範囲調整）
 4. 未保存時の警告（`:e` で dirty の場合）
 5. 強制実行（`:e!`）
 
@@ -253,71 +255,42 @@ struct Cursor {
 - `:e! filename`: 強制的に指定ファイルを開く
 
 **実装ノート**:
-- コマンドバッファから引数を抽出（空白で分割）
-- `:e filename` 形式の場合:
-  - dirty なら警告を出して中止
-  - `!` 付きなら警告なしで実行
+- コマンドバッファから引数を抽出（`split_whitespace()` で空白分割）
+- `:e filename` 形式:
+  - dirty なら警告を出して中止（`!` なしの場合）
   - ファイルが存在しなければエラー
-  - 成功時はカーソルを先頭に移動
-- `:e` 形式の場合:
+  - 成功時はカーソルを先頭に移動（`Cursor::new()`）
+- `:e` 形式（再読み込み）:
   - 現在のファイル名で再読み込み
   - ファイル名がない場合はエラー
-- 新しいファイルを開いた際は:
+  - **カーソル位置は維持**（UX 向上のため）
+  - カーソルが範囲外になった場合は自動調整
+- ファイル切り替え時の処理:
   - Buffer を新規作成
-  - Cursor を初期位置に戻す
   - dirty フラグをクリア
   - filename を更新
 
-**実装の詳細**:
+**カーソル範囲調整機能**:
+- `cursor.rs` に `ensure_within_bounds` メソッドを追加
+- ファイル再読み込み後、カーソルがバッファ範囲外になった場合に自動調整
+- 空バッファの場合は (1,1) に移動
+- 行が範囲外の場合は最終行に移動
+- x 座標を現在行の長さに合わせて調整
 
-**コマンド引数のパース**:
-```rust
-// "e filename" -> ["e", "filename"]
-// "e! filename" -> ["e!", "filename"]
-let parts: Vec<&str> = command_buffer.split_whitespace().collect();
-let cmd = parts.get(0).unwrap_or(&"");
-let arg = parts.get(1).map(|s| s.to_string());
-```
-
-**editor.rs に追加するメソッド**:
-```rust
-/// ファイルを開く/切り替える
-pub fn open_file(&mut self, filename: String) -> io::Result<()> {
-    let buffer = FileIO::open(&filename)?;
-    self.buffer = buffer;
-    self.filename = Some(filename);
-    self.dirty = false;
-    Ok(())
-}
-
-/// 現在のファイルを再読み込み
-pub fn reload(&mut self) -> io::Result<()> {
-    if let Some(filename) = &self.filename {
-        let buffer = FileIO::open(filename)?;
-        self.buffer = buffer;
-        self.dirty = false;
-        Ok(())
-    } else {
-        Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "No file name",
-        ))
-    }
-}
-```
+**設計判断**:
+- **アプローチ2（メソッド化）を採用**: カーソル範囲チェックを `Cursor::ensure_within_bounds` として実装
+  - 利点: カプセル化、再利用性、保守性の向上
+  - フェーズ5以降（`dd` コマンドなど）でも活用可能
 
 **エラーハンドリング**:
-- ファイルが見つからない: "Cannot open file: [filename]"
-- ファイル名なしで `:e`: "No file name"
-- 未保存で実行: "No write since last change (add ! to override)"
-
-**カーソルリセット**:
-- ファイル切り替え時は cursor を初期位置に戻す
-- `cursor = Cursor::new()` で再初期化
+- ファイルが見つからない: `"Cannot open file: {error}"`
+- ファイル名なしで `:e`: `"No file name"`
+- 未保存で実行: `"No write since last change (add ! to override)"`
 
 **Critical Files**:
-- `src/editor.rs`
-- `src/main.rs`
+- `src/editor.rs`（`open_file`, `reload` メソッド）
+- `src/main.rs`（`:e` コマンド処理）
+- `src/cursor.rs`（`ensure_within_bounds` メソッド）
 
 ---
 
