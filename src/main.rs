@@ -245,6 +245,19 @@ fn main() -> io::Result<()> {
                                                 "\"{}\" reloaded",
                                                 editor.filename().unwrap_or("[No Name]")
                                             );
+
+                                            // カーソル位置調整
+                                            // (更新前のカーソル位置よりファイルが短くなった場合などに必要
+                                            let buffer_len = editor.buffer().len();
+                                            let line_len = if buffer_len > 0 {
+                                                editor.buffer()
+                                                    .row(cursor.file_row().min(buffer_len - 1))
+                                                    .map(|r| r.len())
+                                                    .unwrap_or(0)
+                                            } else {
+                                                0
+                                            };
+                                            cursor.ensure_within_bounds(buffer_len, line_len, editor_rows);
                                         }
                                         Err(e) => status_message = format!("Error: {}", e),
                                     }

@@ -121,6 +121,34 @@ impl Cursor {
         }
     }
 
+    /// カーソル位置をバッファの範囲内に調整する
+    ///
+    /// ファイル再読み込みや行数削除後など、カーソルが範囲外になる操作が
+    /// 行われたあとに呼び出す。
+    ///
+    /// # Arguments
+    ///
+    /// - `buffer_len`: バッファの行数
+    /// - `line_len`: 現在行の長さ(文字数)
+    /// - `editor_rows`: エディタ領域の行数(画面の行数 - UI 要素)
+    pub fn ensure_within_bounds(&mut self, buffer_len: usize, line_len: usize, editor_rows: u16) {
+        if buffer_len == 0 {
+            self.y = 1;
+            self.x = 1;
+            self.row_offset = 0;
+            return;
+        }
+
+        let current_file_row = self.file_row();
+
+        // 行が範囲外の場合は、最終行に移動
+        if current_file_row >= buffer_len {
+            self.move_to_bottom(buffer_len, editor_rows);
+        }
+
+        self.adjust_cursor_x(line_len);
+    }
+
     /// スクロール処理
     /// editor_rows: エディタ領域の行数(ステータスバーなどを除く)
     pub fn scroll(&mut self, editor_rows: u16, buffer_len: usize) {
