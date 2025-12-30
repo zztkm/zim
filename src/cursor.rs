@@ -191,7 +191,7 @@ impl Cursor {
     /// ファイル内の実際の行番号を取得する (0-indexed)
     ///
     /// カーソルの画面上の位置 y とスクロールオフセット row_offset から
-    /// バッファ内の行インデックス雨を計算して返します。
+    /// バッファ内の行インデックスを計算して返します。
     pub fn file_row(&self) -> usize {
         (self.row_offset + self.y - 1) as usize
     }
