@@ -1,3 +1,5 @@
+use arboard::Clipboard;
+
 use crate::{buffer::Buffer, file_io::FileIO};
 use std::io;
 
@@ -8,6 +10,8 @@ pub struct Editor {
     dirty: bool,
     /// ヤンクバッファ (コピー or 削除した行を保存)
     yank_buffer: Vec<String>,
+    /// システムクリップボード連携
+    clipboard: Option<Clipboard>,
 }
 
 impl Editor {
@@ -17,6 +21,7 @@ impl Editor {
             filename: None,
             dirty: false,
             yank_buffer: Vec::new(),
+            clipboard: Clipboard::new().ok(),
         }
     }
 
@@ -26,6 +31,7 @@ impl Editor {
             filename,
             dirty: false,
             yank_buffer: Vec::new(),
+            clipboard: Clipboard::new().ok(),
         }
     }
 
@@ -47,6 +53,17 @@ impl Editor {
             Ok(())
         } else {
             Err(io::Error::new(io::ErrorKind::NotFound, "No file name"))
+        }
+    }
+
+    pub fn sync_to_clipboard(&mut self) {
+        if let Some(clipboard) = &mut self.clipboard {
+            if !self.yank_buffer.is_empty() {
+                let text = self.yank_buffer.join("\n");
+                // set_text に失敗しても無視する
+                // TODO: ステータスメッセージに連携するかはあとで検討
+                let _ = clipboard.set_text(text);
+            }
         }
     }
 
@@ -111,6 +128,7 @@ impl Editor {
                 // 削除文字列を取得できた場合は yank_buffer に入れる
                 if let Some(ch) = self.buffer.delete_char(row, col) {
                     self.yank_buffer = vec![ch.to_string()];
+                    self.sync_to_clipboard();
                 }
                 self.dirty = true;
                 return true;
@@ -123,6 +141,7 @@ impl Editor {
     pub fn delete_line(&mut self, row: usize) -> bool {
         if let Some(content) = self.buffer.delete_row_with_content(row) {
             self.yank_buffer = vec![content];
+            self.sync_to_clipboard();
             self.dirty = true;
             true
         } else {
@@ -134,6 +153,7 @@ impl Editor {
     pub fn yank_line(&mut self, row: usize) -> bool {
         if let Some(content) = self.buffer.get_row_content(row) {
             self.yank_buffer = vec![content];
+            self.sync_to_clipboard();
             true
         } else {
             false
