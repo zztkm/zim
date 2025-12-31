@@ -20,13 +20,52 @@ pub enum PasteResult {
     Below,
 }
 
+enum YankType {
+    /// 行内にペースト
+    InLine,
+    /// 新しい行としてペースト
+    NewLine,
+}
+
+struct YankManager {
+    buffer: Vec<String>,
+    yank_type: YankType,
+}
+
+impl YankManager {
+    pub fn new() -> Self {
+        Self { buffer: Vec::new(), yank_type: YankType::InLine }
+    }
+
+    pub fn yank_inline(&mut self, text: String) {
+        self.buffer = vec![text];
+        self.yank_type = YankType::InLine;
+    }
+
+    pub fn yank_line(&mut self, text: String) {
+        self.buffer = vec![text];
+        self.yank_type = YankType::NewLine;
+    }
+
+    pub fn is_newline_yank(&self) -> bool {
+        matches!(self.yank_type, YankType::NewLine)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
+
+    pub fn content(&self) -> &[String] {
+        &self.buffer
+    }
+}
+
 pub struct Editor {
     buffer: Buffer,
     filename: Option<String>,
     /// 未保存の変更があるか
     dirty: bool,
-    /// ヤンクバッファ (コピー or 削除した行を保存)
-    yank_buffer: Vec<String>,
+    yank_manager: YankManager,
     /// システムクリップボード連携
     clipboard: Option<Clipboard>,
 }
@@ -37,7 +76,7 @@ impl Editor {
             buffer: Buffer::new(),
             filename: None,
             dirty: false,
-            yank_buffer: Vec::new(),
+            yank_manager: YankManager::new(),
             clipboard: Clipboard::new().ok(),
         }
     }
@@ -47,7 +86,7 @@ impl Editor {
             buffer,
             filename,
             dirty: false,
-            yank_buffer: Vec::new(),
+            yank_manager: YankManager::new(),
             clipboard: Clipboard::new().ok(),
         }
     }
@@ -75,8 +114,8 @@ impl Editor {
 
     pub fn sync_to_clipboard(&mut self) {
         if let Some(clipboard) = &mut self.clipboard {
-            if !self.yank_buffer.is_empty() {
-                let text = self.yank_buffer.join("\n");
+            if !self.yank_manager.is_empty() {
+                let text = self.yank_manager.content().join("\n");
                 // set_text に失敗しても無視する
                 // TODO: ステータスメッセージに連携するかはあとで検討
                 let _ = clipboard.set_text(text);
@@ -169,7 +208,7 @@ impl Editor {
             if col < line.len() {
                 // 削除文字列を取得できた場合は yank_buffer に入れる
                 if let Some(ch) = self.buffer.delete_char(row, col) {
-                    self.yank_buffer = vec![ch.to_string()];
+                    self.yank_manager.yank_inline(ch.to_string());
                     self.sync_to_clipboard();
                 }
                 self.dirty = true;
@@ -182,7 +221,7 @@ impl Editor {
     /// 指定行を削除してヤンクバッファに保存 (dd 用
     pub fn delete_line(&mut self, row: usize) -> bool {
         if let Some(content) = self.buffer.delete_row_with_content(row) {
-            self.yank_buffer = vec![content];
+            self.yank_manager.yank_line(content);
             self.sync_to_clipboard();
             self.dirty = true;
             true
@@ -194,7 +233,7 @@ impl Editor {
     /// ヤンクバッファにコピーする (yy 用
     pub fn yank_line(&mut self, row: usize) -> bool {
         if let Some(content) = self.buffer.get_row_content(row) {
-            self.yank_buffer = vec![content];
+            self.yank_manager.yank_line(content);
             self.sync_to_clipboard();
             true
         } else {
@@ -202,27 +241,22 @@ impl Editor {
         }
     }
 
-    pub fn is_multiline_yank(&self) -> bool {
-        self.yank_buffer.len() > 1
-            || (self.yank_buffer.len() == 1 && self.yank_buffer[0].contains('\n'))
-    }
-
     pub fn paste(&mut self, row: usize, col: usize, direction: PasteDirection) -> PasteResult {
-        if self.yank_buffer.is_empty() {
+        if self.yank_manager.is_empty() {
             return PasteResult::Empty;
         }
 
-        if self.is_multiline_yank() {
+        if self.yank_manager.is_newline_yank() {
             match direction {
                 PasteDirection::Below => {
-                    for (i, line) in self.yank_buffer.iter().enumerate() {
+                    for (i, line) in self.yank_manager.content().iter().enumerate() {
                         self.buffer.insert_row(row + i + 1, line.clone());
                     }
                     self.dirty = true;
                     PasteResult::Below
                 }
                 PasteDirection::Above => {
-                    for (i, line) in self.yank_buffer.iter().enumerate() {
+                    for (i, line) in self.yank_manager.content().iter().enumerate() {
                         self.buffer.insert_row(row + i, line.clone());
                     }
                     self.dirty = true;
@@ -231,11 +265,11 @@ impl Editor {
             }
         } else {
             let col = match direction {
-                PasteDirection::Below => col,
-                PasteDirection::Above => col.saturating_sub(1),
+                PasteDirection::Below => col + 1,
+                PasteDirection::Above => col,
             };
             if let Some(r) = self.buffer.row_mut(row) {
-                r.insert_str(col, &self.yank_buffer[0]);
+                r.insert_str(col, &self.yank_manager.content()[0]);
                 self.dirty = true;
                 PasteResult::InLine
             } else {
