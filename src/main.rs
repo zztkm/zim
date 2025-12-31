@@ -5,12 +5,16 @@ use zim::{
     cursor::Cursor,
     editor::{Editor, PasteDirection, PasteResult},
     file_io::FileIO,
+    logger,
     mode::ModeManager,
     screen::Screen,
     terminal::Terminal,
 };
 
 fn main() -> io::Result<()> {
+    // ロガー初期化 (debug build のみ)
+    let _ = logger::init("/tmp/zim_debug.log");
+
     // ターミナル初期化
     let mut terminal = Terminal::new()?;
     terminal.clear_screen()?;

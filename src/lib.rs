@@ -2,6 +2,7 @@ pub mod buffer;
 pub mod cursor;
 pub mod editor;
 pub mod file_io;
+pub mod logger;
 pub mod mode;
 pub mod screen;
 pub mod terminal;
