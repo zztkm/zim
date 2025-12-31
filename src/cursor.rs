@@ -5,6 +5,12 @@ pub struct Cursor {
     col_offset: u16,
 }
 
+impl Default for Cursor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Cursor {
     pub fn new() -> Self {
         Self {

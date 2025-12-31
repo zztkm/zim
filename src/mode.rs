@@ -9,6 +9,12 @@ pub struct ModeManager {
     current: Mode,
 }
 
+impl Default for ModeManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ModeManager {
     pub fn new() -> Self {
         Self {

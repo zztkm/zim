@@ -165,13 +165,10 @@ fn main() -> io::Result<()> {
                     let row = cursor.file_row();
                     let col = (cursor.x() - 1) as usize;
 
-                    match editor.paste(row, col, PasteDirection::Above) {
-                        // Above の場合は特にカーソル移動する必要がない
-                        PasteResult::InLine => {
-                            let line_len = editor.current_line_len(row);
-                            cursor.move_right(size.0, line_len);
-                        }
-                        _ => {}
+                    // Above の場合は特にカーソル移動する必要がない
+                    if let PasteResult::InLine = editor.paste(row, col, PasteDirection::Above) {
+                        let line_len = editor.current_line_len(row);
+                        cursor.move_right(size.0, line_len);
                     }
                     status_message.clear();
                 }
@@ -233,7 +230,7 @@ fn main() -> io::Result<()> {
             match key? {
                 Key::Char('\n') => {
                     let parts: Vec<&str> = command_buffer.split_whitespace().collect();
-                    let cmd = parts.get(0).copied().unwrap_or("");
+                    let cmd = parts.first().copied().unwrap_or("");
 
                     // コマンド実行
                     match cmd {

@@ -73,6 +73,12 @@ pub struct Editor {
     clipboard: Option<Clipboard>,
 }
 
+impl Default for Editor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Editor {
     pub fn new() -> Self {
         Self {
@@ -106,7 +112,7 @@ impl Editor {
 
     pub fn reload(&mut self) -> io::Result<()> {
         if let Some(filename) = &self.filename {
-            let buffer = FileIO::open(&filename)?;
+            let buffer = FileIO::open(filename)?;
             // Editor のプロパティを更新する
             self.buffer = buffer;
             self.dirty = false;
@@ -117,13 +123,13 @@ impl Editor {
     }
 
     pub fn sync_to_clipboard(&mut self) {
-        if let Some(clipboard) = &mut self.clipboard {
-            if !self.yank_manager.is_empty() {
-                let text = self.yank_manager.content().join("\n");
-                // set_text に失敗しても無視する
-                // TODO: ステータスメッセージに連携するかはあとで検討
-                let _ = clipboard.set_text(text);
-            }
+        if let Some(clipboard) = &mut self.clipboard
+            && !self.yank_manager.is_empty()
+        {
+            let text = self.yank_manager.content().join("\n");
+            // set_text に失敗しても無視する
+            // TODO: ステータスメッセージに連携するかはあとで検討
+            let _ = clipboard.set_text(text);
         }
     }
 
@@ -208,16 +214,16 @@ impl Editor {
 
     /// カーソル位置の文字を削除する
     pub fn delete_char_at_cursor(&mut self, row: usize, col: usize) -> bool {
-        if let Some(line) = self.buffer.row(row) {
-            if col < line.len() {
-                // 削除文字列を取得できた場合は yank_buffer に入れる
-                if let Some(ch) = self.buffer.delete_char(row, col) {
-                    self.yank_manager.yank_inline(ch.to_string());
-                    self.sync_to_clipboard();
-                }
-                self.dirty = true;
-                return true;
+        if let Some(line) = self.buffer.row(row)
+            && col < line.len()
+        {
+            // 削除文字列を取得できた場合は yank_buffer に入れる
+            if let Some(ch) = self.buffer.delete_char(row, col) {
+                self.yank_manager.yank_inline(ch.to_string());
+                self.sync_to_clipboard();
             }
+            self.dirty = true;
+            return true;
         }
         false
     }

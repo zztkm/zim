@@ -76,6 +76,12 @@ pub struct Buffer {
     rows: Vec<Row>,
 }
 
+impl Default for Buffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Buffer {
     pub fn new() -> Self {
         Self { rows: Vec::new() }
