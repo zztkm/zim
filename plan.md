@@ -356,76 +356,120 @@ struct Cursor {
 
 ---
 
-### フェーズ5.5: クリップボード統合とリファクタリング
-**目標**: システムクリップボード統合とコードの保守性向上
+### フェーズ5.5: ペースト機能の改善とYankManager ✅
+**目標**: ペースト動作の改善と状態管理の強化
+
+**ステータス**: 完了
 
 **実装内容**:
-1. システムクリップボード統合（オプション機能）
-2. main.rs の重複処理のリファクタリング
-3. 共通処理の抽出とヘルパー関数化
-4. コードの整理と可読性向上
+1. 文字単位と行単位のペーストを区別
+2. YankManager による状態管理の導入
+3. `p` / `P` コマンドの動作改善
+4. システムクリップボード統合（Phase 5 で既に実装済み）
 
-**Part 1: クリップボード統合**
+**Part 1: YankManager の導入**
 
-**依存クレートの追加**:
+**データ構造**:
+```rust
+enum YankType {
+    InLine,   // 行内にペースト
+    NewLine,  // 新しい行としてペースト
+}
+
+struct YankManager {
+    buffer: Vec<String>,
+    yank_type: YankType,
+}
+```
+
+**設計の利点**:
+- タイプと内容が必ず同期（構造的にバグを防止）
+- `yank_inline()`, `yank_line()` メソッドで type を確実に設定
+- カプセル化により将来の拡張が容易（Visual mode など）
+
+**Part 2: ペースト動作の改善**
+
+**PasteDirection と PasteResult**:
+```rust
+pub enum PasteDirection {
+    Below,  // p コマンド
+    Above,  // P コマンド
+}
+
+pub enum PasteResult {
+    Empty,   // ヤンクバッファが空
+    InLine,  // カーソルのある行に挿入
+    Above,   // 上の行に挿入
+    Below,   // 下の行に挿入
+}
+```
+
+**ペースト動作**:
+- **行単位ヤンク** (`dd`, `yy`):
+  - `p`: カーソルの下の行にペースト
+  - `P`: カーソルの上の行にペースト
+- **文字単位ヤンク** (`x`):
+  - `p`: カーソルの後ろにペースト
+  - `P`: カーソルの前にペースト
+
+**実装の詳細**:
+```rust
+// editor.rs の paste() メソッド
+pub fn paste(&mut self, row: usize, col: usize, direction: PasteDirection) -> PasteResult {
+    if self.yank_manager.is_newline_yank() {
+        // 行単位: 新しい行として挿入
+        match direction {
+            Below => insert_row(row + 1, ...),
+            Above => insert_row(row, ...),
+        }
+    } else {
+        // 文字単位: 行内に挿入
+        let col = match direction {
+            Below => col + 1,  // カーソルの後ろ
+            Above => col,       // カーソルの前
+        };
+        insert_str(col, ...);
+    }
+}
+```
+
+**Part 3: クリップボード統合**
+
+**依存クレート**:
 ```toml
 [dependencies]
-arboard = "3.4"  # クロスプラットフォームクリップボードライブラリ
+arboard = "3.4"  # クロスプラットフォームクリップボード
 ```
 
-**実装方針**:
-- ヤンク操作時にシステムクリップボードにもコピー
-- オプション機能として実装（失敗してもエディタは動作）
-- `editor.rs` にクリップボード操作を抽象化
+**実装**:
+- Phase 5 で既に実装済み
+- `sync_to_clipboard()` でヤンク時にクリップボードにコピー
+- オプション機能として動作（失敗してもエディタは継続）
 
-**Part 2: リファクタリング対象**
+**Part 4: リファクタリング（Phase 5 で一部実装済み）**
 
-**重複パターン1: カーソル位置情報の取得**
-```rust
-// main.rs で頻出するパターン
-let row = cursor.file_row();
-let col = (cursor.x() - 1) as usize;
-```
-→ Helper 関数化
+**実装済み**:
+- `editor.rs` に `buffer_info(row)` メソッドを追加
+  - バッファの長さと指定行の長さを取得
+  - カーソル位置調整時に頻繁に使用
+- `editor.rs` に `current_line_len(row)` メソッドを追加
+  - 現在行の長さを取得
 
-**重複パターン2: バッファ情報の取得**
-```rust
-// dd, :e などで頻出
-let buffer_len = editor.buffer().len();
-let line_len = if buffer_len > 0 {
-    editor.buffer()
-        .row(cursor.file_row().min(buffer_len - 1))
-        .map(|r| r.len())
-        .unwrap_or(0)
-} else {
-    0
-};
-```
-→ `editor.rs` にメソッド化
+**将来のリファクタリング候補**:
+- main.rs のキーハンドラの重複コード削減
+- カーソル位置情報取得のヘルパー関数化
+- ステータスメッセージ管理の改善
 
-**重複パターン3: カーソル調整とバッファ情報取得の組み合わせ**
-```rust
-// 編集後のカーソル調整パターン
-cursor.ensure_within_bounds(buffer_len, line_len, editor_rows);
-```
-→ より簡潔なインターフェースを提供
-
-**重複パターン4: ステータスメッセージのクリア**
-```rust
-status_message.clear();
-```
-→ 各キーハンドラで繰り返し
-
-**リファクタリング方針**:
-1. **Editor に便利メソッドを追加**
-2. **main.rs にヘルパー関数を追加**（またはモジュール分割）
-3. **重複コードの削減**
-4. **エラーハンドリングの統一**
+**設計の成果**:
+- YankManager による状態管理で、タイプミスや設定忘れを防止
+- InLine / NewLine の明確な区別により、ペースト動作が直感的に
+- 変数の shadowing を活用した簡潔なコード（`col` の調整）
+- Phase 4.5 の `ensure_within_bounds` を再利用
 
 **Critical Files**:
-- `Cargo.toml`（依存追加）
-- `src/editor.rs`（クリップボード統合、便利メソッド）
-- `src/main.rs`（リファクタリング）
+- `src/editor.rs`（YankManager, paste メソッド、便利メソッド）
+- `src/buffer.rs`（insert_str メソッド）
+- `src/main.rs`（p/P コマンドの実装）
 
 ---
 

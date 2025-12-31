@@ -278,3 +278,180 @@ impl Editor {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // YankManager のテスト
+    #[test]
+    fn test_yank_manager_new() {
+        let ym = YankManager::new();
+        assert!(ym.is_empty());
+        assert!(!ym.is_newline_yank());
+    }
+
+    #[test]
+    fn test_yank_manager_yank_inline() {
+        let mut ym = YankManager::new();
+        ym.yank_inline("hello".to_string());
+
+        assert!(!ym.is_empty());
+        assert!(!ym.is_newline_yank());
+        assert_eq!(ym.content(), &["hello"]);
+    }
+
+    #[test]
+    fn test_yank_manager_yank_line() {
+        let mut ym = YankManager::new();
+        ym.yank_line("line content".to_string());
+
+        assert!(!ym.is_empty());
+        assert!(ym.is_newline_yank());
+        assert_eq!(ym.content(), &["line content"]);
+    }
+
+    #[test]
+    fn test_yank_manager_type_change() {
+        let mut ym = YankManager::new();
+
+        // InLine → NewLine
+        ym.yank_inline("char".to_string());
+        assert!(!ym.is_newline_yank());
+
+        ym.yank_line("line".to_string());
+        assert!(ym.is_newline_yank());
+
+        // NewLine → InLine
+        ym.yank_inline("char2".to_string());
+        assert!(!ym.is_newline_yank());
+    }
+
+    // Editor のテスト
+    #[test]
+    fn test_editor_new() {
+        let editor = Editor::new();
+        assert!(editor.buffer().is_empty());
+        assert!(!editor.is_dirty());
+        assert_eq!(editor.filename(), None);
+    }
+
+    #[test]
+    fn test_editor_insert_char() {
+        let mut editor = Editor::new();
+        editor.insert_char(0, 0, 'a');
+
+        assert!(editor.is_dirty());
+        assert_eq!(editor.buffer().len(), 1);
+        assert_eq!(editor.buffer().row(0).unwrap().chars(), "a");
+    }
+
+    #[test]
+    fn test_editor_delete_line() {
+        let mut editor = Editor::new();
+        editor.buffer_mut().insert_row(0, "line1".to_string());
+        editor.buffer_mut().insert_row(1, "line2".to_string());
+
+        let success = editor.delete_line(0);
+
+        assert!(success);
+        assert!(editor.is_dirty());
+        assert_eq!(editor.buffer().len(), 1);
+        assert_eq!(editor.buffer().row(0).unwrap().chars(), "line2");
+        assert!(editor.yank_manager.is_newline_yank());
+        assert_eq!(editor.yank_manager.content(), &["line1"]);
+    }
+
+    #[test]
+    fn test_editor_yank_line() {
+        let mut editor = Editor::new();
+        editor.buffer_mut().insert_row(0, "content".to_string());
+
+        let success = editor.yank_line(0);
+
+        assert!(success);
+        assert!(!editor.is_dirty()); // yank は dirty にしない
+        assert_eq!(editor.buffer().len(), 1); // バッファは変更なし
+        assert!(editor.yank_manager.is_newline_yank());
+        assert_eq!(editor.yank_manager.content(), &["content"]);
+    }
+
+    #[test]
+    fn test_editor_delete_char_at_cursor() {
+        let mut editor = Editor::new();
+        editor.buffer_mut().insert_row(0, "hello".to_string());
+
+        let success = editor.delete_char_at_cursor(0, 0);
+
+        assert!(success);
+        assert!(editor.is_dirty());
+        assert_eq!(editor.buffer().row(0).unwrap().chars(), "ello");
+        assert!(!editor.yank_manager.is_newline_yank()); // 文字削除は InLine
+        assert_eq!(editor.yank_manager.content(), &["h"]);
+    }
+
+    #[test]
+    fn test_editor_paste_newline_below() {
+        let mut editor = Editor::new();
+        editor.buffer_mut().insert_row(0, "line1".to_string());
+        editor.yank_manager.yank_line("yanked".to_string());
+
+        let result = editor.paste(0, 0, PasteDirection::Below);
+
+        assert!(matches!(result, PasteResult::Below));
+        assert_eq!(editor.buffer().len(), 2);
+        assert_eq!(editor.buffer().row(0).unwrap().chars(), "line1");
+        assert_eq!(editor.buffer().row(1).unwrap().chars(), "yanked");
+    }
+
+    #[test]
+    fn test_editor_paste_newline_above() {
+        let mut editor = Editor::new();
+        editor.buffer_mut().insert_row(0, "line1".to_string());
+        editor.yank_manager.yank_line("yanked".to_string());
+
+        let result = editor.paste(0, 0, PasteDirection::Above);
+
+        assert!(matches!(result, PasteResult::Above));
+        assert_eq!(editor.buffer().len(), 2);
+        assert_eq!(editor.buffer().row(0).unwrap().chars(), "yanked");
+        assert_eq!(editor.buffer().row(1).unwrap().chars(), "line1");
+    }
+
+    #[test]
+    fn test_editor_paste_inline_below() {
+        let mut editor = Editor::new();
+        editor.buffer_mut().insert_row(0, "helo".to_string());
+        editor.yank_manager.yank_inline("l".to_string());
+
+        // col=2 (e の後ろ) で Below なので col+1=3 に挿入
+        let result = editor.paste(0, 2, PasteDirection::Below);
+
+        assert!(matches!(result, PasteResult::InLine));
+        assert_eq!(editor.buffer().row(0).unwrap().chars(), "hello");
+    }
+
+    #[test]
+    fn test_editor_paste_inline_above() {
+        let mut editor = Editor::new();
+        editor.buffer_mut().insert_row(0, "helo".to_string());
+        editor.yank_manager.yank_inline("l".to_string());
+
+        // col=3 (o の位置) で Above なので col=3 に挿入
+        let result = editor.paste(0, 3, PasteDirection::Above);
+
+        assert!(matches!(result, PasteResult::InLine));
+        assert_eq!(editor.buffer().row(0).unwrap().chars(), "hello");
+    }
+
+    #[test]
+    fn test_editor_paste_empty() {
+        let mut editor = Editor::new();
+        editor.buffer_mut().insert_row(0, "line".to_string());
+
+        let result = editor.paste(0, 0, PasteDirection::Below);
+
+        assert!(matches!(result, PasteResult::Empty));
+        assert_eq!(editor.buffer().len(), 1); // 変更なし
+    }
+}

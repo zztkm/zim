@@ -173,3 +173,125 @@ impl Buffer {
         self.rows.get(at).map(|r| r.chars().to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Row のテスト
+    #[test]
+    fn test_row_new() {
+        let row = Row::new("hello".to_string());
+        assert_eq!(row.chars(), "hello");
+        assert_eq!(row.len(), 5);
+    }
+
+    #[test]
+    fn test_row_insert_char() {
+        let mut row = Row::new("helo".to_string());
+        row.insert_char(2, 'l');
+        assert_eq!(row.chars(), "hello");
+    }
+
+    #[test]
+    fn test_row_insert_str() {
+        let mut row = Row::new("heo".to_string());
+        row.insert_str(2, "ll");
+        assert_eq!(row.chars(), "hello");
+    }
+
+    #[test]
+    fn test_row_delete_char() {
+        let mut row = Row::new("hello".to_string());
+        let ch = row.delete_char(4);
+        assert_eq!(ch, Some('o'));
+        assert_eq!(row.chars(), "hell");
+    }
+
+    #[test]
+    fn test_row_delete_char_out_of_bounds() {
+        let mut row = Row::new("hi".to_string());
+        let ch = row.delete_char(5);
+        assert_eq!(ch, None);
+        assert_eq!(row.chars(), "hi");
+    }
+
+    #[test]
+    fn test_row_split_off() {
+        let mut row = Row::new("hello".to_string());
+        let tail = row.split_off(2);
+        assert_eq!(row.chars(), "he");
+        assert_eq!(tail, "llo");
+    }
+
+    #[test]
+    fn test_row_append() {
+        let mut row = Row::new("hello".to_string());
+        row.append(" world");
+        assert_eq!(row.chars(), "hello world");
+    }
+
+    // Buffer のテスト
+    #[test]
+    fn test_buffer_new() {
+        let buffer = Buffer::new();
+        assert_eq!(buffer.len(), 0);
+        assert!(buffer.is_empty());
+    }
+
+    #[test]
+    fn test_buffer_insert_row() {
+        let mut buffer = Buffer::new();
+        buffer.insert_row(0, "first".to_string());
+        buffer.insert_row(1, "second".to_string());
+        assert_eq!(buffer.len(), 2);
+        assert_eq!(buffer.row(0).unwrap().chars(), "first");
+        assert_eq!(buffer.row(1).unwrap().chars(), "second");
+    }
+
+    #[test]
+    fn test_buffer_delete_row_with_content() {
+        let mut buffer = Buffer::new();
+        buffer.insert_row(0, "line1".to_string());
+        buffer.insert_row(1, "line2".to_string());
+
+        let content = buffer.delete_row_with_content(0);
+        assert_eq!(content, Some("line1".to_string()));
+        assert_eq!(buffer.len(), 1);
+        assert_eq!(buffer.row(0).unwrap().chars(), "line2");
+    }
+
+    #[test]
+    fn test_buffer_insert_char() {
+        let mut buffer = Buffer::new();
+        buffer.insert_char(0, 0, 'a');
+        assert_eq!(buffer.len(), 1);
+        assert_eq!(buffer.row(0).unwrap().chars(), "a");
+
+        buffer.insert_char(0, 1, 'b');
+        assert_eq!(buffer.row(0).unwrap().chars(), "ab");
+    }
+
+    #[test]
+    fn test_buffer_insert_newline() {
+        let mut buffer = Buffer::new();
+        buffer.insert_row(0, "hello".to_string());
+        buffer.insert_newline(0, 2);
+
+        assert_eq!(buffer.len(), 2);
+        assert_eq!(buffer.row(0).unwrap().chars(), "he");
+        assert_eq!(buffer.row(1).unwrap().chars(), "llo");
+    }
+
+    #[test]
+    fn test_buffer_join_rows() {
+        let mut buffer = Buffer::new();
+        buffer.insert_row(0, "hello".to_string());
+        buffer.insert_row(1, " world".to_string());
+
+        buffer.join_rows(1);
+
+        assert_eq!(buffer.len(), 1);
+        assert_eq!(buffer.row(0).unwrap().chars(), "hello world");
+    }
+}

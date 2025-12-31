@@ -31,8 +31,18 @@ impl Cursor {
     }
 
     pub fn move_up(&mut self) {
-        if self.y > 1 {
-            self.y -= 1;
+        // ファイル内の現在行
+        let current_file_row = self.row_offset + self.y - 1;
+
+        // ファイルの先頭より上には移動できない
+        if current_file_row > 0 {
+            if self.y > 1 {
+                // 画面内では y を減らす
+                self.y -= 1;
+            } else {
+                // 画面上端に達している場合は、スクロールする
+                self.row_offset -= 1;
+            }
         }
     }
 
@@ -48,11 +58,18 @@ impl Cursor {
         // バッファの最後の行のインデックス
         let last_row = (buffer_len as u16).saturating_sub(1);
 
-        // バッファの範囲内、かつ画面の範囲内のみで移動可能
-        if current_file_row < last_row && self.y < max_rows {
-            self.y += 1;
+        // バッファの範囲内で移動可能
+        if current_file_row < last_row {
+            if self.y < max_rows {
+                // 画面内では y を増やす
+                self.y += 1;
+            } else {
+                // 画面下端に到達している場合は、スクロールする
+                self.row_offset += 1;
+            }
         }
     }
+
     pub fn move_left(&mut self) {
         if self.x > 1 {
             self.x -= 1;
@@ -194,5 +211,271 @@ impl Cursor {
     /// バッファ内の行インデックスを計算して返します。
     pub fn file_row(&self) -> usize {
         (self.row_offset + self.y - 1) as usize
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cursor_new() {
+        let cursor = Cursor::new();
+        assert_eq!(cursor.x(), 1);
+        assert_eq!(cursor.y(), 1);
+        assert_eq!(cursor.row_offset(), 0);
+        assert_eq!(cursor.file_row(), 0);
+    }
+
+    #[test]
+    fn test_cursor_move_basic() {
+        let mut cursor = Cursor::new();
+
+        cursor.move_right(80, 10);
+        assert_eq!(cursor.x(), 2);
+
+        cursor.move_left();
+        assert_eq!(cursor.x(), 1);
+
+        cursor.move_down(24, 10);
+        assert_eq!(cursor.y(), 2);
+
+        cursor.move_up();
+        assert_eq!(cursor.y(), 1);
+    }
+
+    #[test]
+    fn test_cursor_move_boundaries() {
+        let mut cursor = Cursor::new();
+
+        // 左端でさらに左に移動しても x=1 のまま
+        cursor.move_left();
+        assert_eq!(cursor.x(), 1);
+
+        // 上端でさらに上に移動しても y=1 のまま
+        cursor.move_up();
+        assert_eq!(cursor.y(), 1);
+    }
+
+    #[test]
+    fn test_cursor_move_right_limit() {
+        let mut cursor = Cursor::new();
+        let line_len = 5; // "hello" の長さ
+
+        // Normal モードでは行末まで移動可能
+        for _ in 0..10 {
+            cursor.move_right(80, line_len);
+        }
+        assert_eq!(cursor.x(), 5); // 最後の文字まで
+    }
+
+    #[test]
+    fn test_cursor_move_down_limit() {
+        let mut cursor = Cursor::new();
+        let buffer_len = 3;
+        let editor_rows = 24;
+
+        // バッファの最後の行まで移動
+        for _ in 0..10 {
+            cursor.move_down(editor_rows, buffer_len);
+        }
+        assert_eq!(cursor.y(), 3); // buffer_len まで
+    }
+
+    #[test]
+    fn test_cursor_move_to_line_start() {
+        let mut cursor = Cursor::new();
+        cursor.move_right(80, 10);
+        cursor.move_right(80, 10);
+        assert_eq!(cursor.x(), 3);
+
+        cursor.move_to_line_start();
+        assert_eq!(cursor.x(), 1);
+    }
+
+    #[test]
+    fn test_cursor_move_to_line_end() {
+        let mut cursor = Cursor::new();
+        cursor.move_to_line_end(5);
+        assert_eq!(cursor.x(), 5);
+
+        cursor.move_to_line_end(0); // 空行
+        assert_eq!(cursor.x(), 1);
+    }
+
+    #[test]
+    fn test_cursor_move_to_top() {
+        let mut cursor = Cursor::new();
+        cursor.move_down(24, 10);
+        cursor.move_down(24, 10);
+        cursor.move_right(80, 10);
+
+        cursor.move_to_top();
+        assert_eq!(cursor.y(), 1);
+        assert_eq!(cursor.row_offset(), 0);
+    }
+
+    #[test]
+    fn test_cursor_move_to_bottom() {
+        let mut cursor = Cursor::new();
+        let buffer_len = 5;
+        let editor_rows = 24;
+
+        cursor.move_to_bottom(buffer_len, editor_rows);
+
+        // buffer_len=5 なので最後の行は index 4 → y=5
+        assert_eq!(cursor.y(), 5);
+        assert_eq!(cursor.row_offset(), 0);
+    }
+
+    #[test]
+    fn test_cursor_move_to_bottom_large_file() {
+        let mut cursor = Cursor::new();
+        let buffer_len = 100;
+        let editor_rows = 24;
+
+        cursor.move_to_bottom(buffer_len, editor_rows);
+
+        // スクロールが必要
+        let last_line = 99u16; // 0-indexed で最後は 99
+        assert_eq!(cursor.row_offset(), last_line.saturating_sub(editor_rows - 1));
+        assert_eq!(cursor.y(), last_line - cursor.row_offset() + 1);
+    }
+
+    #[test]
+    fn test_cursor_adjust_cursor_x() {
+        let mut cursor = Cursor::new();
+        cursor.move_right(80, 10);
+        cursor.move_right(80, 10);
+        cursor.move_right(80, 10);
+        assert_eq!(cursor.x(), 4);
+
+        // 短い行に移動した場合
+        cursor.adjust_cursor_x(2);
+        assert_eq!(cursor.x(), 2);
+
+        // 空行に移動した場合
+        cursor.adjust_cursor_x(0);
+        assert_eq!(cursor.x(), 1);
+    }
+
+    #[test]
+    fn test_cursor_ensure_within_bounds_empty_buffer() {
+        let mut cursor = Cursor::new();
+        cursor.move_down(24, 10);
+        cursor.move_right(80, 10);
+
+        cursor.ensure_within_bounds(0, 0, 24);
+
+        assert_eq!(cursor.x(), 1);
+        assert_eq!(cursor.y(), 1);
+        assert_eq!(cursor.row_offset(), 0);
+    }
+
+    #[test]
+    fn test_cursor_ensure_within_bounds_row_out_of_range() {
+        let mut cursor = Cursor::new();
+        // カーソルを 10 行目に移動
+        for _ in 0..9 {
+            cursor.move_down(24, 100);
+        }
+        assert_eq!(cursor.file_row(), 9);
+
+        // バッファが 5 行しかない場合
+        cursor.ensure_within_bounds(5, 10, 24);
+
+        // 最終行（index 4 → y=5）に移動
+        assert_eq!(cursor.file_row(), 4);
+    }
+
+    #[test]
+    fn test_cursor_ensure_within_bounds_col_adjustment() {
+        let mut cursor = Cursor::new();
+        cursor.move_right(80, 20);
+        cursor.move_right(80, 20);
+        cursor.move_right(80, 20);
+        assert_eq!(cursor.x(), 4);
+
+        // 現在行が 2 文字しかない場合
+        cursor.ensure_within_bounds(10, 2, 24);
+
+        assert_eq!(cursor.x(), 2);
+    }
+
+    #[test]
+    fn test_cursor_file_row() {
+        let mut cursor = Cursor::new();
+        assert_eq!(cursor.file_row(), 0);
+
+        cursor.move_down(24, 10);
+        assert_eq!(cursor.file_row(), 1);
+
+        cursor.move_down(24, 10);
+        assert_eq!(cursor.file_row(), 2);
+    }
+
+    #[test]
+    fn test_cursor_scroll() {
+        let mut cursor = Cursor::new();
+        let buffer_len = 100;
+        let editor_rows = 24;
+
+        // 画面下端を超えて移動（実際のメインループでは scroll が毎回呼ばれる）
+        for _ in 0..30 {
+            cursor.move_down(editor_rows, buffer_len);
+            cursor.scroll(editor_rows, buffer_len);
+        }
+
+        // スクロールが発生しているはず
+        assert!(cursor.row_offset() > 0);
+        assert_eq!(cursor.file_row(), 30);
+    }
+
+    #[test]
+    fn test_cursor_scroll_at_bottom() {
+        let mut cursor = Cursor::new();
+        let buffer_len = 10;
+        let editor_rows = 24;
+
+        // 小さいファイルではスクロールは発生しない
+        for _ in 0..20 {
+            cursor.move_down(editor_rows, buffer_len);
+            cursor.scroll(editor_rows, buffer_len);
+        }
+
+        assert_eq!(cursor.row_offset(), 0);
+        assert_eq!(cursor.file_row(), 9); // 最終行（0-indexed）
+    }
+
+    #[test]
+    fn test_cursor_scroll_up() {
+        let mut cursor = Cursor::new();
+        let buffer_len = 100;
+        let editor_rows = 24;
+
+        // ファイルの 30行目に移動（スクロールが発生する位置）
+        for _ in 0..30 {
+            cursor.move_down(editor_rows, buffer_len);
+            cursor.scroll(editor_rows, buffer_len);
+        }
+
+        assert_eq!(cursor.file_row(), 30);
+        let initial_offset = cursor.row_offset();
+        assert!(initial_offset > 0); // スクロールしている
+        assert_eq!(initial_offset, 7); // row_offset = 30 - 23 = 7
+        assert_eq!(cursor.y(), 24); // 画面下端
+
+        // 上に 25回移動（画面上端を超えて移動）
+        // 最初の 23回で y=1 に到達、残り 2回で row_offset が減少
+        for _ in 0..25 {
+            cursor.move_up();
+            cursor.scroll(editor_rows, buffer_len);
+        }
+
+        // 上方向のスクロールが発生しているはず
+        assert_eq!(cursor.file_row(), 5); // 30 - 25 = 5
+        assert_eq!(cursor.y(), 1); // 画面上端
+        assert!(cursor.row_offset() < initial_offset); // 7 → 5
+        assert_eq!(cursor.row_offset(), 5);
     }
 }
