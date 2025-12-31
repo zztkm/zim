@@ -28,8 +28,13 @@ impl Screen {
                 // バッファ内容を表示
                 if let Some(row) = buffer.row(file_row) {
                     let text = row.render();
-                    // 画面に収まるように切り詰める（簡易的な処理）
-                    let display_text = if text.len() > 80 { &text[..80] } else { text };
+                    // 画面に収まるように切り詰める（文字単位で安全に処理）
+                    let chars: Vec<char> = text.chars().collect();
+                    let display_text: String = if chars.len() > 80 {
+                        chars.iter().take(80).collect()
+                    } else {
+                        text.to_string()
+                    };
                     write!(stdout, "{}", display_text)?;
                 }
                 // 行末までクリア
