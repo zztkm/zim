@@ -38,7 +38,7 @@ impl Row {
 
     /// 指定位置に文字を挿入
     pub fn insert_str(&mut self, at: usize, s: &str) {
-        if at <= self.chars().len() {
+        if at <= self.chars.len() {
             self.chars.insert_str(at, s);
             self.render = self.chars.clone();
         }

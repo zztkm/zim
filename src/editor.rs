@@ -97,6 +97,7 @@ impl Editor {
         self.buffer = buffer;
         self.filename = Some(filename);
         self.dirty = false;
+        // yank の状態は継続して良いため、YankManager は意図的に更新していない
         Ok(())
     }
 
