@@ -338,7 +338,10 @@ mod tests {
 
         // スクロールが必要
         let last_line = 99u16; // 0-indexed で最後は 99
-        assert_eq!(cursor.row_offset(), last_line.saturating_sub(editor_rows - 1));
+        assert_eq!(
+            cursor.row_offset(),
+            last_line.saturating_sub(editor_rows - 1)
+        );
         assert_eq!(cursor.y(), last_line - cursor.row_offset() + 1);
     }
 

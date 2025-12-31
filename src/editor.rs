@@ -34,7 +34,10 @@ struct YankManager {
 
 impl YankManager {
     pub fn new() -> Self {
-        Self { buffer: Vec::new(), yank_type: YankType::InLine }
+        Self {
+            buffer: Vec::new(),
+            yank_type: YankType::InLine,
+        }
     }
 
     pub fn yank_inline(&mut self, text: String) {
