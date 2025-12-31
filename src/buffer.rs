@@ -36,6 +36,14 @@ impl Row {
         }
     }
 
+    /// 指定位置に文字を挿入
+    pub fn insert_str(&mut self, at: usize, s: &str) {
+        if at <= self.chars().len() {
+            self.chars.insert_str(at, s);
+            self.render = self.chars.clone();
+        }
+    }
+
     /// 指定位置の文字を削除し、削除した文字を返す
     pub fn delete_char(&mut self, at: usize) -> Option<char> {
         if at < self.chars.len() {

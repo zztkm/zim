@@ -2,7 +2,11 @@ use std::io::{self};
 
 use termion::{event::Key, input::TermRead};
 use zim::{
-    cursor::Cursor, editor::Editor, file_io::FileIO, mode::ModeManager, screen::Screen,
+    cursor::Cursor,
+    editor::{Editor, PastDirection, PasteResult},
+    file_io::FileIO,
+    mode::ModeManager,
+    screen::Screen,
     terminal::Terminal,
 };
 
@@ -110,10 +114,9 @@ fn main() -> io::Result<()> {
                     let col = (cursor.x() - 1) as usize;
                     if editor.delete_char_at_cursor(row, col) {
                         // 削除成功後、行末を超えないように調整
-                        if let Some(line) = editor.buffer().row(row) {
-                            if line.len() > 0 && cursor.x() > line.len() as u16 {
-                                cursor.move_left();
-                            }
+                        let line_len = editor.current_line_len(row);
+                        if line_len > 0 && cursor.x() > line_len as u16 {
+                            cursor.move_left();
                         }
                     }
                     status_message.clear();
@@ -124,16 +127,7 @@ fn main() -> io::Result<()> {
                         let row = cursor.file_row();
                         if editor.delete_line(row) {
                             // 削除成功後、カーソル位置調整
-                            let buffer_len = editor.buffer().len();
-                            let line_len = if buffer_len > 0 {
-                                editor
-                                    .buffer()
-                                    .row(cursor.file_row().min(buffer_len - 1))
-                                    .map(|r| r.len())
-                                    .unwrap_or(0)
-                            } else {
-                                0
-                            };
+                            let (buffer_len, line_len) = editor.buffer_info(cursor.file_row());
                             cursor.ensure_within_bounds(buffer_len, line_len, editor_rows);
                         }
                     } else {
@@ -153,14 +147,32 @@ fn main() -> io::Result<()> {
                 }
                 Key::Char('p') => {
                     let row = cursor.file_row();
-                    if editor.paste_below(row) {
-                        cursor.move_down(editor_rows, editor.buffer().len());
+                    let col = (cursor.x() - 1) as usize;
+
+                    match editor.paste(row, col, PastDirection::Below) {
+                        PasteResult::InLine => {
+                            let line_len = editor.current_line_len(row);
+                            cursor.move_right(size.0, line_len);
+                        }
+                        PasteResult::Below => {
+                            cursor.move_down(editor_rows, editor.buffer().len());
+                        }
+                        _ => {}
                     }
                     status_message.clear();
                 }
                 Key::Char('P') => {
                     let row = cursor.file_row();
-                    editor.paste_above(row);
+                    let col = (cursor.x() - 1) as usize;
+
+                    match editor.paste(row, col, PastDirection::Abobe) {
+                        // Abobe の場合は特にカーソル移動する必要がない
+                        PasteResult::InLine => {
+                            let line_len = editor.current_line_len(row);
+                            cursor.move_right(size.0, line_len);
+                        }
+                        _ => {}
+                    }
                     status_message.clear();
                 }
                 Key::Char('h') => cursor.move_left(),
@@ -306,16 +318,8 @@ fn main() -> io::Result<()> {
 
                                             // カーソル位置調整
                                             // (更新前のカーソル位置よりファイルが短くなった場合などに必要
-                                            let buffer_len = editor.buffer().len();
-                                            let line_len = if buffer_len > 0 {
-                                                editor
-                                                    .buffer()
-                                                    .row(cursor.file_row().min(buffer_len - 1))
-                                                    .map(|r| r.len())
-                                                    .unwrap_or(0)
-                                            } else {
-                                                0
-                                            };
+                                            let (buffer_len, line_len) =
+                                                editor.buffer_info(cursor.file_row());
                                             cursor.ensure_within_bounds(
                                                 buffer_len,
                                                 line_len,

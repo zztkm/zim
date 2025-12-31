@@ -3,6 +3,23 @@ use arboard::Clipboard;
 use crate::{buffer::Buffer, file_io::FileIO};
 use std::io;
 
+pub enum PastDirection {
+    // `p`
+    Below,
+    // `P`
+    Abobe,
+}
+
+pub enum PasteResult {
+    Empty,
+    // カーソルのある行に挿入
+    InLine,
+    // 上の行に挿入
+    Abobe,
+    // 下の行に挿入
+    Below,
+}
+
 pub struct Editor {
     buffer: Buffer,
     filename: Option<String>,
@@ -73,6 +90,31 @@ impl Editor {
 
     pub fn buffer_mut(&mut self) -> &mut Buffer {
         &mut self.buffer
+    }
+
+    /// バッファの長さと指定行の長さを取得
+    ///
+    /// カーソル位置調整時に頻繁に使用される
+    ///
+    /// # Returns
+    ///
+    /// (バッファの長さ, 指定行の長さ)
+    pub fn buffer_info(&self, row: usize) -> (usize, usize) {
+        let buffer_len = self.buffer.len();
+        let line_len = if buffer_len > 0 {
+            self.buffer
+                .row(row.min(buffer_len - 1))
+                .map(|r| r.len())
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        (buffer_len, line_len)
+    }
+
+    /// 現在のカーソル位置の行の長さを取得
+    pub fn current_line_len(&self, row: usize) -> usize {
+        self.buffer.row(row).map(|r| r.len()).unwrap_or(0)
     }
 
     pub fn filename(&self) -> Option<&str> {
@@ -160,29 +202,45 @@ impl Editor {
         }
     }
 
-    /// ヤンクバッファの内容を指定行の下にペースト (p)
-    pub fn paste_below(&mut self, row: usize) -> bool {
-        if self.yank_buffer.is_empty() {
-            return false;
-        }
-
-        for (i, line) in self.yank_buffer.iter().enumerate() {
-            self.buffer.insert_row(row + i + 1, line.clone());
-        }
-        self.dirty = true;
-        true
+    pub fn is_multiline_yank(&self) -> bool {
+        self.yank_buffer.len() > 1
+            || (self.yank_buffer.len() == 1 && self.yank_buffer[0].contains('\n'))
     }
 
-    /// ヤンクバッファの内容を指定行の上にペースト (P)
-    pub fn paste_above(&mut self, row: usize) -> bool {
+    pub fn paste(&mut self, row: usize, col: usize, direction: PastDirection) -> PasteResult {
         if self.yank_buffer.is_empty() {
-            return false;
+            return PasteResult::Empty;
         }
 
-        for (i, line) in self.yank_buffer.iter().enumerate() {
-            self.buffer.insert_row(row + i, line.clone());
+        if self.is_multiline_yank() {
+            match direction {
+                PastDirection::Below => {
+                    for (i, line) in self.yank_buffer.iter().enumerate() {
+                        self.buffer.insert_row(row + i + 1, line.clone());
+                    }
+                    self.dirty = true;
+                    PasteResult::Below
+                }
+                PastDirection::Abobe => {
+                    for (i, line) in self.yank_buffer.iter().enumerate() {
+                        self.buffer.insert_row(row + i, line.clone());
+                    }
+                    self.dirty = true;
+                    PasteResult::Abobe
+                }
+            }
+        } else {
+            let col = match direction {
+                PastDirection::Below => col,
+                PastDirection::Abobe => col - 1,
+            };
+            if let Some(r) = self.buffer.row_mut(row) {
+                r.insert_str(col, &self.yank_buffer[0]);
+                self.dirty = true;
+                PasteResult::InLine
+            } else {
+                PasteResult::Empty
+            }
         }
-        self.dirty = true;
-        true
     }
 }
