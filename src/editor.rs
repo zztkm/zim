@@ -232,7 +232,7 @@ impl Editor {
         } else {
             let col = match direction {
                 PasteDirection::Below => col,
-                PasteDirection::Above => col - 1,
+                PasteDirection::Above => col.saturating_sub(1),
             };
             if let Some(r) = self.buffer.row_mut(row) {
                 r.insert_str(col, &self.yank_buffer[0]);
