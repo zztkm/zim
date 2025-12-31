@@ -3,11 +3,11 @@ use arboard::Clipboard;
 use crate::{buffer::Buffer, file_io::FileIO};
 use std::io;
 
-pub enum PastDirection {
+pub enum PasteDirection {
     // `p`
     Below,
     // `P`
-    Abobe,
+    Above,
 }
 
 pub enum PasteResult {
@@ -15,7 +15,7 @@ pub enum PasteResult {
     // カーソルのある行に挿入
     InLine,
     // 上の行に挿入
-    Abobe,
+    Above,
     // 下の行に挿入
     Below,
 }
@@ -207,32 +207,32 @@ impl Editor {
             || (self.yank_buffer.len() == 1 && self.yank_buffer[0].contains('\n'))
     }
 
-    pub fn paste(&mut self, row: usize, col: usize, direction: PastDirection) -> PasteResult {
+    pub fn paste(&mut self, row: usize, col: usize, direction: PasteDirection) -> PasteResult {
         if self.yank_buffer.is_empty() {
             return PasteResult::Empty;
         }
 
         if self.is_multiline_yank() {
             match direction {
-                PastDirection::Below => {
+                PasteDirection::Below => {
                     for (i, line) in self.yank_buffer.iter().enumerate() {
                         self.buffer.insert_row(row + i + 1, line.clone());
                     }
                     self.dirty = true;
                     PasteResult::Below
                 }
-                PastDirection::Abobe => {
+                PasteDirection::Above => {
                     for (i, line) in self.yank_buffer.iter().enumerate() {
                         self.buffer.insert_row(row + i, line.clone());
                     }
                     self.dirty = true;
-                    PasteResult::Abobe
+                    PasteResult::Above
                 }
             }
         } else {
             let col = match direction {
-                PastDirection::Below => col,
-                PastDirection::Abobe => col - 1,
+                PasteDirection::Below => col,
+                PasteDirection::Above => col - 1,
             };
             if let Some(r) = self.buffer.row_mut(row) {
                 r.insert_str(col, &self.yank_buffer[0]);

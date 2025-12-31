@@ -3,7 +3,7 @@ use std::io::{self};
 use termion::{event::Key, input::TermRead};
 use zim::{
     cursor::Cursor,
-    editor::{Editor, PastDirection, PasteResult},
+    editor::{Editor, PasteDirection, PasteResult},
     file_io::FileIO,
     mode::ModeManager,
     screen::Screen,
@@ -149,7 +149,7 @@ fn main() -> io::Result<()> {
                     let row = cursor.file_row();
                     let col = (cursor.x() - 1) as usize;
 
-                    match editor.paste(row, col, PastDirection::Below) {
+                    match editor.paste(row, col, PasteDirection::Below) {
                         PasteResult::InLine => {
                             let line_len = editor.current_line_len(row);
                             cursor.move_right(size.0, line_len);
@@ -165,8 +165,8 @@ fn main() -> io::Result<()> {
                     let row = cursor.file_row();
                     let col = (cursor.x() - 1) as usize;
 
-                    match editor.paste(row, col, PastDirection::Abobe) {
-                        // Abobe の場合は特にカーソル移動する必要がない
+                    match editor.paste(row, col, PasteDirection::Above) {
+                        // Above の場合は特にカーソル移動する必要がない
                         PasteResult::InLine => {
                             let line_len = editor.current_line_len(row);
                             cursor.move_right(size.0, line_len);
