@@ -473,25 +473,102 @@ arboard = "3.4"  # クロスプラットフォームクリップボード
 
 ---
 
-### フェーズ6: Visualモード（基本）
-**目標**: テキスト選択、ヤンク、削除ができる
+### フェーズ6: Visualモード（基本 - character-wise）
+**目標**: 文字単位でテキスト選択、ヤンク、削除ができる
 
 **実装内容**:
 1. `mode.rs`: Visual モード管理、選択範囲の記録
 2. `screen.rs`: 選択範囲のハイライト表示
-3. `keymap.rs`: Visual モードでのキー処理
-4. `buffer.rs`: 範囲削除、範囲ヤンク
+3. `main.rs`: Visual モードでのキー処理
+4. `editor.rs`: 範囲削除、範囲ヤンク
 
 **キーバインド**:
-- Normal モードで `v`: Visual モード開始
+- Normal モードで `v`: Visual モード開始（character-wise）
 - Visual モードで `h/j/k/l`: 選択範囲拡大
 - Visual モードで `y`: 選択範囲をヤンク、Normal モードへ
 - Visual モードで `d`: 選択範囲を削除、Normal モードへ
 - Visual モードで `ESC`: Normal モードへ（選択解除）
 
+**実装の詳細**:
+- **文字単位選択**: 開始位置から現在のカーソル位置まで文字単位で選択
+- **行をまたぐ選択**: 複数行にまたがる選択も可能
+- **ハイライト表示**: 選択範囲を反転表示（`termion::style::Invert`）
+- **座標の正規化**: 開始位置より前にカーソル移動した場合も正しく処理
+
+**注意点**:
+- このフェーズでは `v` (character-wise) のみ実装
+- `V` (line-wise) と `Ctrl+v` (block-wise) は Phase 6.5 で実装
+
 **Critical Files**:
 - `src/mode.rs`
 - `src/screen.rs`
+- `src/editor.rs`
+- `src/main.rs`
+
+---
+
+### フェーズ6.5: Visual Line / Visual Block モード
+**目標**: 行単位選択と矩形選択ができる
+
+**実装内容**:
+1. `mode.rs`: Visual Line と Visual Block モードを追加
+2. `screen.rs`: 各モードに応じたハイライト表示
+3. `main.rs`: `V` と `Ctrl+v` のキーバインド
+4. `editor.rs`: 行単位・ブロック単位の範囲操作
+
+**キーバインド**:
+
+**Visual Line モード (`V`)**:
+- Normal モードで `V`: Visual Line モード開始
+- カーソル移動で行単位で選択範囲が広がる
+- `y`: 選択した行をヤンク
+- `d`: 選択した行を削除
+- `ESC`: Normal モードへ
+
+**Visual Block モード (`Ctrl+v`)**:
+- Normal モードで `Ctrl+v`: Visual Block モード開始
+- カーソル移動で矩形領域が選択される
+- `y`: 矩形領域をヤンク
+- `d`: 矩形領域を削除
+- `I`: 矩形領域の各行の先頭に挿入（高度な機能、オプション）
+- `ESC`: Normal モードへ
+
+**実装の詳細**:
+
+**Visual Line モード**:
+- 選択範囲は常に行全体
+- 開始行から現在行まで、全ての行が選択される
+- ヤンク・削除は行単位で実行
+
+**Visual Block モード**:
+- 矩形領域を選択（開始位置と現在位置で矩形を定義）
+- 各行の同じ列範囲を選択
+- ヤンク時は各行の選択部分を保存
+- ペースト時は各行に貼り付け
+- 表示幅を考慮した列計算が必要（全角文字対応）
+
+**Mode enum の拡張**:
+```rust
+enum Mode {
+    Normal,
+    Insert,
+    Command,
+    Visual,          // character-wise (Phase 6)
+    VisualLine,      // line-wise (Phase 6.5)
+    VisualBlock,     // block-wise (Phase 6.5)
+}
+```
+
+**注意点**:
+- Visual Block モードは全角文字の扱いが複雑
+- Phase 7 (UTF-8 完全対応) 後に実装するとより安全
+- または ASCII 範囲での動作に限定して実装し、Phase 7 で改善
+
+**Critical Files**:
+- `src/mode.rs`
+- `src/screen.rs`
+- `src/editor.rs`
+- `src/main.rs`
 
 ---
 

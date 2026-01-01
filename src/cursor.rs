@@ -1,3 +1,28 @@
+/// ファイル内の位置を表す構造体 (0-indexed)
+///
+/// バッファ操作は常に 0-indexed で行われるため、
+/// Cursor の 1-indexed (x, y) とは区別して使用します。
+///
+/// # Fields
+/// - `row`: 行番号 (0-indexed)
+/// - `col`: 列番号 (0-indexed)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    pub row: usize,
+    pub col: usize,
+}
+
+impl Position {
+    /// 新しい Position を作成
+    ///
+    /// # Arguments
+    /// - `row`: 行番号 (0-indexed)
+    /// - `col`: 列番号 (0-indexed)
+    pub fn new(row: usize, col: usize) -> Self {
+        Self { row, col }
+    }
+}
+
 pub struct Cursor {
     x: u16,
     y: u16,
@@ -217,6 +242,27 @@ impl Cursor {
     /// バッファ内の行インデックスを計算して返します。
     pub fn file_row(&self) -> usize {
         (self.row_offset + self.y - 1) as usize
+    }
+
+    /// カーソルの列位置を 0-indexed で取得
+    ///
+    /// Cursor の x は 1-indexed（画面座標）ですが、
+    /// バッファ操作では 0-indexed が必要なため、変換して返します。
+    ///
+    /// # Returns
+    /// 0-indexed の列番号
+    pub fn col_index(&self) -> usize {
+        (self.x - 1) as usize
+    }
+
+    /// カーソルの現在位置を Position として取得
+    ///
+    /// バッファ操作用の 0-indexed の Position を返します。
+    ///
+    /// # Returns
+    /// 現在のカーソル位置を表す Position (row, col ともに 0-indexed)
+    pub fn position(&self) -> Position {
+        Position::new(self.file_row(), self.col_index())
     }
 }
 
@@ -486,5 +532,55 @@ mod tests {
         assert_eq!(cursor.y(), 1); // 画面上端
         assert!(cursor.row_offset() < initial_offset); // 7 → 5
         assert_eq!(cursor.row_offset(), 5);
+    }
+
+    #[test]
+    fn test_position_new() {
+        let pos = Position::new(5, 10);
+        assert_eq!(pos.row, 5);
+        assert_eq!(pos.col, 10);
+    }
+
+    #[test]
+    fn test_position_equality() {
+        let pos1 = Position::new(1, 2);
+        let pos2 = Position::new(1, 2);
+        let pos3 = Position::new(2, 1);
+
+        assert_eq!(pos1, pos2);
+        assert_ne!(pos1, pos3);
+    }
+
+    #[test]
+    fn test_cursor_col_index() {
+        let mut cursor = Cursor::new();
+        // 初期状態: x=1 → col_index=0
+        assert_eq!(cursor.col_index(), 0);
+
+        // 右に1回移動: x=2 → col_index=1
+        cursor.move_right(80, 10);
+        assert_eq!(cursor.col_index(), 1);
+
+        // さらに右に移動: x=3 → col_index=2
+        cursor.move_right(80, 10);
+        assert_eq!(cursor.col_index(), 2);
+    }
+
+    #[test]
+    fn test_cursor_position() {
+        let mut cursor = Cursor::new();
+        // 初期状態: row=0, col=0
+        let pos = cursor.position();
+        assert_eq!(pos, Position::new(0, 0));
+
+        // 右に移動してから確認
+        cursor.move_right(80, 10);
+        let pos = cursor.position();
+        assert_eq!(pos, Position::new(0, 1));
+
+        // 下に移動してから確認
+        cursor.move_down(24, 10);
+        let pos = cursor.position();
+        assert_eq!(pos, Position::new(1, 1));
     }
 }

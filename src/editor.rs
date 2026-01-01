@@ -1,6 +1,6 @@
 use arboard::Clipboard;
 
-use crate::{buffer::Buffer, file_io::FileIO};
+use crate::{buffer::Buffer, cursor::Position, file_io::FileIO};
 use std::io;
 
 pub enum PasteDirection {
@@ -175,20 +175,20 @@ impl Editor {
     }
 
     /// 文字を挿入
-    pub fn insert_char(&mut self, row: usize, col: usize, ch: char) {
-        self.buffer.insert_char(row, col, ch);
+    pub fn insert_char(&mut self, pos: Position, ch: char) {
+        self.buffer.insert_char(pos, ch);
         self.dirty = true;
     }
 
     /// 文字を削除
-    pub fn delete_char(&mut self, row: usize, col: usize) {
-        self.buffer.delete_char(row, col);
+    pub fn delete_char(&mut self, pos: Position) {
+        self.buffer.delete_char(pos);
         self.dirty = true;
     }
 
     /// 改行を挿入
-    pub fn insert_newline(&mut self, row: usize, col: usize) {
-        self.buffer.insert_newline(row, col);
+    pub fn insert_newline(&mut self, pos: Position) {
+        self.buffer.insert_newline(pos);
         self.dirty = true;
     }
 
@@ -213,12 +213,12 @@ impl Editor {
     }
 
     /// カーソル位置の文字を削除する
-    pub fn delete_char_at_cursor(&mut self, row: usize, col: usize) -> bool {
-        if let Some(line) = self.buffer.row(row)
-            && col < line.len()
+    pub fn delete_char_at_cursor(&mut self, pos: Position) -> bool {
+        if let Some(line) = self.buffer.row(pos.row)
+            && pos.col < line.len()
         {
             // 削除文字列を取得できた場合は yank_buffer に入れる
-            if let Some(ch) = self.buffer.delete_char(row, col) {
+            if let Some(ch) = self.buffer.delete_char(pos) {
                 self.yank_manager.yank_inline(ch.to_string());
                 self.sync_to_clipboard();
             }
@@ -251,7 +251,17 @@ impl Editor {
         }
     }
 
-    pub fn paste(&mut self, row: usize, col: usize, direction: PasteDirection) -> PasteResult {
+    /// 範囲ヤンク(Visual mode 用)
+    pub fn yank_range(&mut self, start: Position, end: Position) -> bool {
+        todo!()
+    }
+
+    /// 範囲削除(Visual mode 用)
+    pub fn delete_range(&mut self, start: Position, end: Position) -> bool {
+        todo!()
+    }
+
+    pub fn paste(&mut self, pos: Position, direction: PasteDirection) -> PasteResult {
         if self.yank_manager.is_empty() {
             return PasteResult::Empty;
         }
@@ -260,14 +270,14 @@ impl Editor {
             match direction {
                 PasteDirection::Below => {
                     for (i, line) in self.yank_manager.content().iter().enumerate() {
-                        self.buffer.insert_row(row + i + 1, line.clone());
+                        self.buffer.insert_row(pos.row + i + 1, line.clone());
                     }
                     self.dirty = true;
                     PasteResult::Below
                 }
                 PasteDirection::Above => {
                     for (i, line) in self.yank_manager.content().iter().enumerate() {
-                        self.buffer.insert_row(row + i, line.clone());
+                        self.buffer.insert_row(pos.row + i, line.clone());
                     }
                     self.dirty = true;
                     PasteResult::Above
@@ -275,10 +285,10 @@ impl Editor {
             }
         } else {
             let col = match direction {
-                PasteDirection::Below => col + 1,
-                PasteDirection::Above => col,
+                PasteDirection::Below => pos.col + 1,
+                PasteDirection::Above => pos.col,
             };
-            if let Some(r) = self.buffer.row_mut(row) {
+            if let Some(r) = self.buffer.row_mut(pos.row) {
                 r.insert_str(col, &self.yank_manager.content()[0]);
                 self.dirty = true;
                 PasteResult::InLine
@@ -349,7 +359,7 @@ mod tests {
     #[test]
     fn test_editor_insert_char() {
         let mut editor = Editor::new();
-        editor.insert_char(0, 0, 'a');
+        editor.insert_char(Position::new(0, 0), 'a');
 
         assert!(editor.is_dirty());
         assert_eq!(editor.buffer().len(), 1);
@@ -391,7 +401,7 @@ mod tests {
         let mut editor = Editor::new();
         editor.buffer_mut().insert_row(0, "hello".to_string());
 
-        let success = editor.delete_char_at_cursor(0, 0);
+        let success = editor.delete_char_at_cursor(Position::new(0, 0));
 
         assert!(success);
         assert!(editor.is_dirty());
@@ -406,7 +416,7 @@ mod tests {
         editor.buffer_mut().insert_row(0, "line1".to_string());
         editor.yank_manager.yank_line("yanked".to_string());
 
-        let result = editor.paste(0, 0, PasteDirection::Below);
+        let result = editor.paste(Position::new(0, 0), PasteDirection::Below);
 
         assert!(matches!(result, PasteResult::Below));
         assert_eq!(editor.buffer().len(), 2);
@@ -420,7 +430,7 @@ mod tests {
         editor.buffer_mut().insert_row(0, "line1".to_string());
         editor.yank_manager.yank_line("yanked".to_string());
 
-        let result = editor.paste(0, 0, PasteDirection::Above);
+        let result = editor.paste(Position::new(0, 0), PasteDirection::Above);
 
         assert!(matches!(result, PasteResult::Above));
         assert_eq!(editor.buffer().len(), 2);
@@ -435,7 +445,7 @@ mod tests {
         editor.yank_manager.yank_inline("l".to_string());
 
         // col=2 (e の後ろ) で Below なので col+1=3 に挿入
-        let result = editor.paste(0, 2, PasteDirection::Below);
+        let result = editor.paste(Position::new(0, 2), PasteDirection::Below);
 
         assert!(matches!(result, PasteResult::InLine));
         assert_eq!(editor.buffer().row(0).unwrap().chars(), "hello");
@@ -448,7 +458,7 @@ mod tests {
         editor.yank_manager.yank_inline("l".to_string());
 
         // col=3 (o の位置) で Above なので col=3 に挿入
-        let result = editor.paste(0, 3, PasteDirection::Above);
+        let result = editor.paste(Position::new(0, 3), PasteDirection::Above);
 
         assert!(matches!(result, PasteResult::InLine));
         assert_eq!(editor.buffer().row(0).unwrap().chars(), "hello");
@@ -459,7 +469,7 @@ mod tests {
         let mut editor = Editor::new();
         editor.buffer_mut().insert_row(0, "line".to_string());
 
-        let result = editor.paste(0, 0, PasteDirection::Below);
+        let result = editor.paste(Position::new(0, 0), PasteDirection::Below);
 
         assert!(matches!(result, PasteResult::Empty));
         assert_eq!(editor.buffer().len(), 1); // 変更なし

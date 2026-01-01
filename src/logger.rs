@@ -7,10 +7,7 @@ pub struct Logger {
 
 impl Logger {
     pub fn new(path: &str) -> std::io::Result<Self> {
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
         Ok(Self { file })
     }
 

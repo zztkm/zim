@@ -1,12 +1,16 @@
+use crate::cursor::Position;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Mode {
     Normal,
     Command,
     Insert,
+    Visual,
 }
 
 pub struct ModeManager {
     current: Mode,
+    visual_start: Option<Position>,
 }
 
 impl Default for ModeManager {
@@ -19,6 +23,7 @@ impl ModeManager {
     pub fn new() -> Self {
         Self {
             current: Mode::Normal,
+            visual_start: None,
         }
     }
 
@@ -38,6 +43,11 @@ impl ModeManager {
         self.current = Mode::Insert;
     }
 
+    pub fn enter_visual(&mut self, pos: Position) {
+        self.visual_start = Some(pos);
+        self.current = Mode::Visual;
+    }
+
     pub fn is_normal(&self) -> bool {
         self.current == Mode::Normal
     }
@@ -49,4 +59,17 @@ impl ModeManager {
     pub fn is_insert(&self) -> bool {
         self.current == Mode::Insert
     }
+
+    pub fn is_visual(&self) -> bool {
+        self.current() == Mode::Visual
+    }
+
+    pub fn clear_visual(&mut self) {
+        self.visual_start = None;
+    }
+
+    pub fn visual_start(&self) -> Option<Position> {
+        self.visual_start
+    }
 }
+

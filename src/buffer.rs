@@ -1,3 +1,5 @@
+use crate::cursor::Position;
+
 pub struct Row {
     chars: String,
     render: String,
@@ -116,37 +118,37 @@ impl Buffer {
         }
     }
 
-    /// 指定行に文字を挿入
-    pub fn insert_char(&mut self, row: usize, col: usize, ch: char) {
+    /// 指定位置に文字を挿入
+    pub fn insert_char(&mut self, pos: Position, ch: char) {
         // 行が存在しない場合は空行を追加
-        if row >= self.rows.len() {
+        if pos.row >= self.rows.len() {
             self.insert_row(self.rows.len(), String::new());
         }
 
-        if let Some(r) = self.rows.get_mut(row) {
-            r.insert_char(col, ch);
+        if let Some(r) = self.rows.get_mut(pos.row) {
+            r.insert_char(pos.col, ch);
         }
     }
 
-    /// 指定行の文字を削除する
-    pub fn delete_char(&mut self, row: usize, col: usize) -> Option<char> {
-        if let Some(r) = self.rows.get_mut(row) {
-            r.delete_char(col)
+    /// 指定位置の文字を削除する
+    pub fn delete_char(&mut self, pos: Position) -> Option<char> {
+        if let Some(r) = self.rows.get_mut(pos.row) {
+            r.delete_char(pos.col)
         } else {
             None
         }
     }
 
     /// 改行を挿入（現在行を分割）
-    pub fn insert_newline(&mut self, row: usize, col: usize) {
-        if row >= self.rows.len() {
+    pub fn insert_newline(&mut self, pos: Position) {
+        if pos.row >= self.rows.len() {
             // 最後の行より後ろの場合は空行を追加
             self.insert_row(self.rows.len(), String::new());
-        } else if let Some(current_row) = self.rows.get_mut(row) {
+        } else if let Some(current_row) = self.rows.get_mut(pos.row) {
             // 現在行を分割
-            let tail = current_row.split_off(col);
+            let tail = current_row.split_off(pos.col);
             // 次の行として挿入
-            self.insert_row(row + 1, tail);
+            self.insert_row(pos.row + 1, tail);
         }
     }
 
@@ -270,11 +272,11 @@ mod tests {
     #[test]
     fn test_buffer_insert_char() {
         let mut buffer = Buffer::new();
-        buffer.insert_char(0, 0, 'a');
+        buffer.insert_char(Position::new(0, 0), 'a');
         assert_eq!(buffer.len(), 1);
         assert_eq!(buffer.row(0).unwrap().chars(), "a");
 
-        buffer.insert_char(0, 1, 'b');
+        buffer.insert_char(Position::new(0, 1), 'b');
         assert_eq!(buffer.row(0).unwrap().chars(), "ab");
     }
 
@@ -282,7 +284,7 @@ mod tests {
     fn test_buffer_insert_newline() {
         let mut buffer = Buffer::new();
         buffer.insert_row(0, "hello".to_string());
-        buffer.insert_newline(0, 2);
+        buffer.insert_newline(Position::new(0, 2));
 
         assert_eq!(buffer.len(), 2);
         assert_eq!(buffer.row(0).unwrap().chars(), "he");

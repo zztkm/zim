@@ -2,7 +2,7 @@ use std::io::{self};
 
 use termion::{event::Key, input::TermRead};
 use zim::{
-    cursor::Cursor,
+    cursor::{Cursor, Position},
     editor::{Editor, PasteDirection, PasteResult},
     file_io::FileIO,
     logger,
@@ -114,11 +114,10 @@ fn main() -> io::Result<()> {
                     mode_manager.enter_insert();
                 }
                 Key::Char('x') => {
-                    let row = cursor.file_row();
-                    let col = (cursor.x() - 1) as usize;
-                    if editor.delete_char_at_cursor(row, col) {
+                    let pos = cursor.position();
+                    if editor.delete_char_at_cursor(pos) {
                         // 削除成功後、行末を超えないように調整
-                        let line_len = editor.current_line_len(row);
+                        let line_len = editor.current_line_len(pos.row);
                         if line_len > 0 && cursor.x() > line_len as u16 {
                             cursor.move_left();
                         }
@@ -150,12 +149,11 @@ fn main() -> io::Result<()> {
                     status_message.clear();
                 }
                 Key::Char('p') => {
-                    let row = cursor.file_row();
-                    let col = (cursor.x() - 1) as usize;
+                    let pos = cursor.position();
 
-                    match editor.paste(row, col, PasteDirection::Below) {
+                    match editor.paste(pos, PasteDirection::Below) {
                         PasteResult::InLine => {
-                            let line_len = editor.current_line_len(row);
+                            let line_len = editor.current_line_len(pos.row);
                             cursor.move_right(size.0, line_len);
                         }
                         PasteResult::Below => {
@@ -166,16 +164,20 @@ fn main() -> io::Result<()> {
                     status_message.clear();
                 }
                 Key::Char('P') => {
-                    let row = cursor.file_row();
-                    let col = (cursor.x() - 1) as usize;
+                    let pos = cursor.position();
 
                     // Above の場合は特にカーソル移動する必要がない
-                    if let PasteResult::InLine = editor.paste(row, col, PasteDirection::Above) {
-                        let line_len = editor.current_line_len(row);
+                    if let PasteResult::InLine = editor.paste(pos, PasteDirection::Above) {
+                        let line_len = editor.current_line_len(pos.row);
                         cursor.move_right(size.0, line_len);
                     }
                     status_message.clear();
                 }
+                // Visual mode 系
+                Key::Char('v') => {
+                    mode_manager.enter_visual(cursor.position());
+                }
+                // 移動系
                 Key::Char('h') => cursor.move_left(),
                 Key::Char('j') => {
                     cursor.move_down(editor_rows, editor.buffer().len());
@@ -365,9 +367,8 @@ fn main() -> io::Result<()> {
                 }
                 Key::Char('\n') => {
                     // 改行
-                    let row = cursor.file_row();
-                    let col = (cursor.x() - 1) as usize;
-                    editor.insert_newline(row, col);
+                    let pos = cursor.position();
+                    editor.insert_newline(pos);
                     cursor.move_down(editor_rows, editor.buffer().len());
                     cursor.move_to_line_start();
                     // TODO:
@@ -375,33 +376,70 @@ fn main() -> io::Result<()> {
                 }
                 Key::Backspace => {
                     // 削除
-                    let row = cursor.file_row();
-                    let col = (cursor.x() - 1) as usize;
+                    let pos = cursor.position();
 
-                    if col > 0 {
+                    if pos.col > 0 {
                         // 文字を削除
-                        editor.delete_char(row, col - 1);
+                        editor.delete_char(Position::new(pos.row, pos.col - 1));
                         cursor.move_left();
-                    } else if row > 0 {
+                    } else if pos.row > 0 {
                         // 行頭で Backspace + 前の行と結合
-                        let prev_row = row - 1;
+                        let prev_row = pos.row - 1;
                         let prev_line_len =
                             editor.buffer().row(prev_row).map(|r| r.len()).unwrap_or(0);
-                        editor.join_rows(row);
+                        editor.join_rows(pos.row);
                         cursor.move_up();
                         cursor.move_to_line_end((prev_line_len as u16) + 1);
                     }
                 }
                 Key::Char(ch) => {
                     // 文字挿入
-                    let row = cursor.file_row();
-                    let col = (cursor.x() - 1) as usize;
-                    editor.insert_char(row, col, ch);
+                    let pos = cursor.position();
+                    editor.insert_char(pos, ch);
                     // Insert モードでは行末の次の位置まで移動可能
                     cursor.move_right(
                         size.0,
-                        editor.buffer().row(row).map(|r| r.len()).unwrap_or(0) + 1,
+                        editor.buffer().row(pos.row).map(|r| r.len()).unwrap_or(0) + 1,
                     );
+                }
+                _ => {}
+            }
+        } else if mode_manager.is_visual() {
+            match key? {
+                Key::Esc => {
+                    mode_manager.enter_normal();
+                    mode_manager.clear_visual();
+                }
+                Key::Char('h') => cursor.move_left(),
+                Key::Char('j') => {
+                    cursor.move_down(editor_rows, editor.buffer().len());
+                    // 移動後の行に合わせて x 座標を調整する
+                    let row = cursor.file_row();
+                    if let Some(line) = editor.buffer().row(row) {
+                        cursor.adjust_cursor_x(line.len());
+                    }
+                }
+                Key::Char('k') => {
+                    cursor.move_up();
+                    // 移動後の行に合わせて x 座標を調整する
+                    let row = cursor.file_row();
+                    if let Some(line) = editor.buffer().row(row) {
+                        cursor.adjust_cursor_x(line.len());
+                    }
+                }
+                Key::Char('l') => {
+                    let row = cursor.file_row();
+                    if let Some(line) = editor.buffer().row(row) {
+                        cursor.move_right(size.0, line.len());
+                    }
+                }
+                Key::Char('y') => {
+                    // ヤンク
+                    todo!()
+                }
+                Key::Char('d') => {
+                    // 削除してヤンク
+                    todo!()
                 }
                 _ => {}
             }
