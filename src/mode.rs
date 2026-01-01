@@ -72,4 +72,3 @@ impl ModeManager {
         self.visual_start
     }
 }
-

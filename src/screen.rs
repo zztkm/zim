@@ -3,7 +3,7 @@ use termion;
 
 use crate::UI_HEIGHT;
 use crate::buffer::Buffer;
-use crate::cursor::Cursor;
+use crate::cursor::{Cursor, Position};
 use crate::mode::Mode;
 
 pub struct Screen;
@@ -18,6 +18,7 @@ impl Screen {
         rows: u16,
         buffer: &Buffer,
         row_offset: u16,
+        selection: Option<(Position, Position)>,
     ) -> io::Result<()> {
         let editor_rows = Self::editor_rows(rows);
 
@@ -28,14 +29,68 @@ impl Screen {
                 // バッファ内容を表示
                 if let Some(row) = buffer.row(file_row) {
                     let text = row.render();
-                    // 画面に収まるように切り詰める（文字単位で安全に処理）
                     let chars: Vec<char> = text.chars().collect();
-                    let display_text: String = if chars.len() > 80 {
-                        chars.iter().take(80).collect()
+
+                    // 選択範囲のハイライト処理
+                    if let Some((start, end)) = selection {
+                        // 範囲を正規化
+                        let (norm_start, norm_end) = if start <= end {
+                            (start, end)
+                        } else {
+                            (end, start)
+                        };
+
+                        // この行が選択範囲内かチェック
+                        if file_row >= norm_start.row && file_row <= norm_end.row {
+                            // 行内の選択範囲を計算
+                            let start_col = if file_row == norm_start.row {
+                                norm_start.col
+                            } else {
+                                0
+                            };
+
+                            let end_col = if file_row == norm_end.row {
+                                norm_end.col.min(chars.len().saturating_sub(1))
+                            } else {
+                                chars.len().saturating_sub(1)
+                            };
+
+                            // ハイライト表示
+                            // 選択前
+                            let before: String = chars.iter().take(start_col).collect();
+                            write!(stdout, "{}", before)?;
+
+                            // 選択部分（反転）
+                            write!(stdout, "{}", termion::style::Invert)?;
+                            let selected: String = chars
+                                .iter()
+                                .skip(start_col)
+                                .take(end_col.saturating_sub(start_col) + 1)
+                                .collect();
+                            write!(stdout, "{}", selected)?;
+                            write!(stdout, "{}", termion::style::Reset)?;
+
+                            // 選択後
+                            let after: String = chars.iter().skip(end_col + 1).take(80).collect();
+                            write!(stdout, "{}", after)?;
+                        } else {
+                            // 選択範囲外の通常表示
+                            let display_text: String = if chars.len() > 80 {
+                                chars.iter().take(80).collect()
+                            } else {
+                                text.to_string()
+                            };
+                            write!(stdout, "{}", display_text)?;
+                        }
                     } else {
-                        text.to_string()
-                    };
-                    write!(stdout, "{}", display_text)?;
+                        // 選択なしの通常表示
+                        let display_text: String = if chars.len() > 80 {
+                            chars.iter().take(80).collect()
+                        } else {
+                            text.to_string()
+                        };
+                        write!(stdout, "{}", display_text)?;
+                    }
                 }
                 // 行末までクリア
                 write!(stdout, "{}", termion::clear::UntilNewline)?;
@@ -116,6 +171,7 @@ impl Screen {
         buffer: &Buffer,
         filename: Option<&str>,
         status_message: &str,
+        visual_start: Option<Position>,
     ) -> io::Result<()> {
         // カーソルを隠す
         write!(stdout, "{}", termion::cursor::Hide)?;
@@ -124,8 +180,15 @@ impl Screen {
 
         let size = termion::terminal_size()?;
 
+        // Visual モードの場合は選択範囲を計算
+        let selection = if mode == Mode::Visual {
+            visual_start.map(|start| (start, cursor.position()))
+        } else {
+            None
+        };
+
         // 行を描画
-        Self::draw_rows(stdout, size.1, buffer, cursor.row_offset())?;
+        Self::draw_rows(stdout, size.1, buffer, cursor.row_offset(), selection)?;
 
         // ステータスバー描画
         Self::draw_status_bar(stdout, filename, buffer.len(), cursor.file_row())?;

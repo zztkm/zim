@@ -6,7 +6,7 @@
 /// # Fields
 /// - `row`: 行番号 (0-indexed)
 /// - `col`: 列番号 (0-indexed)
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     pub row: usize,
     pub col: usize,

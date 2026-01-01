@@ -253,12 +253,122 @@ impl Editor {
 
     /// 範囲ヤンク(Visual mode 用)
     pub fn yank_range(&mut self, start: Position, end: Position) -> bool {
-        todo!()
+        let yank_lines = self.extract_range_text(start, end);
+
+        if yank_lines.is_empty() {
+            return false;
+        }
+
+        if yank_lines.len() == 1 {
+            // 単一行の場合は inline
+            self.yank_manager.yank_inline(yank_lines[0].clone());
+        } else {
+            for line in yank_lines {
+                self.yank_manager.yank_line(line);
+            }
+        }
+
+        self.sync_to_clipboard();
+        true
     }
 
     /// 範囲削除(Visual mode 用)
     pub fn delete_range(&mut self, start: Position, end: Position) -> bool {
-        todo!()
+        if !self.yank_range(start, end) {
+            return false;
+        }
+
+        let (norm_start, norm_end) = Self::normalize_range(start, end);
+
+        if norm_start.row == norm_end.row {
+            if let Some(row) = self.buffer.row_mut(norm_start.row) {
+                for _ in norm_start.col..=norm_end.col {
+                    // 削除されると次の削除対象文字がその index になるため
+                    // norm_start.col 固定で良い
+                    row.delete_char(norm_start.col);
+                }
+                self.dirty = true;
+                return true;
+            }
+        } else {
+            if let Some(first_row) = self.buffer.row_mut(norm_start.row) {
+                let chars: Vec<char> = first_row.chars().chars().collect();
+                let remaining: String = chars.iter().take(norm_start.col).collect();
+                // 入れ替え
+                *first_row = crate::buffer::Row::new(remaining);
+            }
+
+            let tail = if let Some(last_row) = self.buffer.row(norm_end.row) {
+                let chars: Vec<char> = last_row.chars().chars().collect();
+                chars.iter().skip(norm_end.col + 1).collect()
+            } else {
+                String::new()
+            };
+
+            // 中間行と最後の行を削除
+            for _ in norm_start.row + 1..=norm_end.row {
+                self.buffer.delete_row(norm_start.row + 1);
+            }
+
+            // tail を最初の行に結合して文字詰め
+            if let Some(first_row) = self.buffer.row_mut(norm_start.row) {
+                first_row.append(&tail);
+            }
+
+            self.dirty = true;
+            return true;
+        }
+        false
+    }
+
+    pub fn normalize_range(start: Position, end: Position) -> (Position, Position) {
+        if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        }
+    }
+
+    fn is_in_selection(pos: Position, start: Position, end: Position) -> bool {
+        let (norm_start, norm_end) = Self::normalize_range(start, end);
+        pos >= norm_start && pos <= norm_end
+    }
+
+    fn extract_range_text(&self, start: Position, end: Position) -> Vec<String> {
+        let (norm_start, norm_end) = Self::normalize_range(start, end);
+        let mut result = Vec::new();
+
+        if norm_start.row == norm_end.row {
+            // 同じ行内
+            if let Some(row) = self.buffer().row(norm_start.row) {
+                let chars: Vec<char> = row.chars().chars().collect();
+                let text: String = chars
+                    .iter()
+                    .skip(norm_start.col)
+                    .take(norm_end.col - norm_start.col + 1)
+                    .collect();
+                result.push(text);
+            }
+        } else {
+            // 複数行にまたがる選択
+            for row_idx in norm_start.row..=norm_end.row {
+                if let Some(row) = self.buffer().row(norm_start.row) {
+                    let chars: Vec<char> = row.chars().chars().collect();
+                    let text: String = if row_idx == norm_start.row {
+                        // 最初の行: start.col から行末まで
+                        chars.iter().skip(norm_start.col).collect()
+                    } else if row_idx == norm_end.row {
+                        // 最終行: 行頭から end.col まで
+                        chars.iter().take(norm_end.col + 1).collect()
+                    } else {
+                        // 中間行
+                        row.chars().to_string()
+                    };
+                    result.push(text);
+                }
+            }
+        }
+        result
     }
 
     pub fn paste(&mut self, pos: Position, direction: PasteDirection) -> PasteResult {
@@ -289,7 +399,9 @@ impl Editor {
                 PasteDirection::Above => pos.col,
             };
             if let Some(r) = self.buffer.row_mut(pos.row) {
-                r.insert_str(col, &self.yank_manager.content()[0]);
+                // 挿入位置が行末を超えないようにクランプ
+                let safe_col = col.min(r.len());
+                r.insert_str(safe_col, &self.yank_manager.content()[0]);
                 self.dirty = true;
                 PasteResult::InLine
             } else {
@@ -473,5 +585,35 @@ mod tests {
 
         assert!(matches!(result, PasteResult::Empty));
         assert_eq!(editor.buffer().len(), 1); // 変更なし
+    }
+
+    #[test]
+    fn test_normalize_range() {
+        let start = Position::new(1, 5);
+        let end = Position::new(3, 2);
+
+        let (norm_start, norm_end) = Editor::normalize_range(start, end);
+        assert_eq!(norm_start, start);
+        assert_eq!(norm_end, end);
+
+        // start, end を反転させていた場合
+        let (norm_start, norm_end) = Editor::normalize_range(end, start);
+        assert_eq!(norm_start, start);
+        assert_eq!(norm_end, end);
+    }
+
+    #[test]
+    fn test_is_in_selection() {
+        let start = Position::new(1, 5);
+        let end = Position::new(3, 2);
+
+        // 範囲内チェックテスト
+        assert!(Editor::is_in_selection(Position::new(2, 0), start, end));
+        assert!(Editor::is_in_selection(Position::new(1, 5), start, end));
+        assert!(Editor::is_in_selection(Position::new(3, 2), start, end));
+
+        // 範囲外
+        assert!(!Editor::is_in_selection(Position::new(0, 0), start, end));
+        assert!(!Editor::is_in_selection(Position::new(4, 0), start, end));
     }
 }
