@@ -1,5 +1,7 @@
 use std::io::{self, Write};
 use termion;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use crate::UI_HEIGHT;
 use crate::buffer::Buffer;
@@ -9,6 +11,28 @@ use crate::mode::Mode;
 pub struct Screen;
 
 impl Screen {
+    /// テキストを指定された最大幅に切り詰める（文字幅を考慮）
+    fn truncate_to_width(text: &str, max_width: usize) -> String {
+        let mut width = 0;
+        let mut result = String::new();
+        for g in text.graphemes(true) {
+            let g_width = UnicodeWidthStr::width(g);
+            if width + g_width > max_width {
+                break;
+            }
+            result.push_str(g);
+            width += g_width;
+        }
+        result
+    }
+
+    /// テキストの表示幅を計算（文字幅を考慮）
+    fn text_display_width(text: &str) -> usize {
+        text.graphemes(true)
+            .map(|g| UnicodeWidthStr::width(g))
+            .sum()
+    }
+
     pub fn editor_rows(rows: u16) -> u16 {
         rows.saturating_sub(UI_HEIGHT)
     }
@@ -29,7 +53,8 @@ impl Screen {
                 // バッファ内容を表示
                 if let Some(row) = buffer.row(file_row) {
                     let text = row.render();
-                    let chars: Vec<char> = text.chars().collect();
+                    let graphemes: Vec<&str> = text.graphemes(true).collect();
+                    let grapheme_count = graphemes.len();
 
                     // 選択範囲のハイライト処理
                     if let Some((start, end)) = selection {
@@ -42,7 +67,7 @@ impl Screen {
 
                         // この行が選択範囲内かチェック
                         if file_row >= norm_start.row && file_row <= norm_end.row {
-                            // 行内の選択範囲を計算
+                            // 行内の選択範囲を計算（グラフィーム単位）
                             let start_col = if file_row == norm_start.row {
                                 norm_start.col
                             } else {
@@ -50,45 +75,47 @@ impl Screen {
                             };
 
                             let end_col = if file_row == norm_end.row {
-                                norm_end.col.min(chars.len().saturating_sub(1))
+                                norm_end.col.min(grapheme_count.saturating_sub(1))
                             } else {
-                                chars.len().saturating_sub(1)
+                                grapheme_count.saturating_sub(1)
                             };
 
-                            // ハイライト表示
+                            // ハイライト表示（グラフィーム単位）
                             // 選択前
-                            let before: String = chars.iter().take(start_col).collect();
+                            let before: String = graphemes
+                                .iter()
+                                .take(start_col)
+                                .copied()
+                                .collect();
                             write!(stdout, "{}", before)?;
 
                             // 選択部分（反転）
                             write!(stdout, "{}", termion::style::Invert)?;
-                            let selected: String = chars
+                            let selected: String = graphemes
                                 .iter()
                                 .skip(start_col)
                                 .take(end_col.saturating_sub(start_col) + 1)
+                                .copied()
                                 .collect();
                             write!(stdout, "{}", selected)?;
                             write!(stdout, "{}", termion::style::Reset)?;
 
                             // 選択後
-                            let after: String = chars.iter().skip(end_col + 1).take(80).collect();
-                            write!(stdout, "{}", after)?;
+                            let after: String = graphemes
+                                .iter()
+                                .skip(end_col + 1)
+                                .copied()
+                                .collect();
+                            let display_after = Self::truncate_to_width(&after, 80);
+                            write!(stdout, "{}", display_after)?;
                         } else {
                             // 選択範囲外の通常表示
-                            let display_text: String = if chars.len() > 80 {
-                                chars.iter().take(80).collect()
-                            } else {
-                                text.to_string()
-                            };
+                            let display_text = Self::truncate_to_width(text, 80);
                             write!(stdout, "{}", display_text)?;
                         }
                     } else {
                         // 選択なしの通常表示
-                        let display_text: String = if chars.len() > 80 {
-                            chars.iter().take(80).collect()
-                        } else {
-                            text.to_string()
-                        };
+                        let display_text = Self::truncate_to_width(text, 80);
                         write!(stdout, "{}", display_text)?;
                     }
                 }
@@ -200,15 +227,22 @@ impl Screen {
         match mode {
             Mode::Command => {
                 // コマンドモード時はコマンドライン上にカーソル
+                let buffer_width = Self::text_display_width(command_buffer);
                 write!(
                     stdout,
                     "{}",
-                    termion::cursor::Goto((command_buffer.len() as u16) + 2, size.1)
+                    termion::cursor::Goto((buffer_width as u16) + 2, size.1)
                 )?;
             }
             Mode::Normal | Mode::Insert | Mode::Visual => {
                 // ノーマルモード時はエディタ上にカーソル
-                write!(stdout, "{}", termion::cursor::Goto(cursor.x(), cursor.y()))?;
+                // マルチバイト文字対応: グラフィームインデックスから表示位置に変換
+                let render_x = if let Some(row) = buffer.row(cursor.file_row()) {
+                    cursor.render_x(row)
+                } else {
+                    cursor.x() // フォールバック
+                };
+                write!(stdout, "{}", termion::cursor::Goto(render_x, cursor.y()))?;
             }
         }
 

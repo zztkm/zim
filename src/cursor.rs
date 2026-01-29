@@ -1,3 +1,5 @@
+use crate::buffer::Row;
+
 /// ファイル内の位置を表す構造体 (0-indexed)
 ///
 /// バッファ操作は常に 0-indexed で行われるため、
@@ -106,16 +108,14 @@ impl Cursor {
             self.x -= 1;
         }
     }
-    pub fn move_right(&mut self, max_cols: u16, line_len: usize) {
+    pub fn move_right(&mut self, line_len: usize) {
         // 空行の場合は移動しない
         if line_len == 0 {
             return;
         }
 
         // vim の Normal モードでは行の最後の文字まで移動可能
-        let max_x = (line_len as u16).min(max_cols);
-
-        if self.x < max_x {
+        if self.x < line_len as u16 {
             self.x += 1;
         }
     }
@@ -255,6 +255,22 @@ impl Cursor {
         (self.x - 1) as usize
     }
 
+    /// 画面描画用の x 座標を計算（表示幅ベース、1-indexed）
+    ///
+    /// グラフィームインデックスベースの `x` を、
+    /// 実際の画面表示位置（表示幅考慮）に変換します。
+    ///
+    /// # Arguments
+    /// - `row`: 現在行の Row
+    ///
+    /// # Returns
+    /// 画面描画用の x 座標（1-indexed）
+    pub fn render_x(&self, row: &Row) -> u16 {
+        let grapheme_idx = self.col_index();
+        let render_pos = row.render_x(grapheme_idx);
+        (render_pos as u16) + 1
+    }
+
     /// カーソルの現在位置を Position として取得
     ///
     /// バッファ操作用の 0-indexed の Position を返します。
@@ -283,7 +299,7 @@ mod tests {
     fn test_cursor_move_basic() {
         let mut cursor = Cursor::new();
 
-        cursor.move_right(80, 10);
+        cursor.move_right(10);
         assert_eq!(cursor.x(), 2);
 
         cursor.move_left();
@@ -316,7 +332,7 @@ mod tests {
 
         // Normal モードでは行末まで移動可能
         for _ in 0..10 {
-            cursor.move_right(80, line_len);
+            cursor.move_right(line_len);
         }
         assert_eq!(cursor.x(), 5); // 最後の文字まで
     }
@@ -337,8 +353,8 @@ mod tests {
     #[test]
     fn test_cursor_move_to_line_start() {
         let mut cursor = Cursor::new();
-        cursor.move_right(80, 10);
-        cursor.move_right(80, 10);
+        cursor.move_right(10);
+        cursor.move_right(10);
         assert_eq!(cursor.x(), 3);
 
         cursor.move_to_line_start();
@@ -360,7 +376,7 @@ mod tests {
         let mut cursor = Cursor::new();
         cursor.move_down(24, 10);
         cursor.move_down(24, 10);
-        cursor.move_right(80, 10);
+        cursor.move_right(10);
 
         cursor.move_to_top();
         assert_eq!(cursor.y(), 1);
@@ -400,9 +416,9 @@ mod tests {
     #[test]
     fn test_cursor_adjust_cursor_x() {
         let mut cursor = Cursor::new();
-        cursor.move_right(80, 10);
-        cursor.move_right(80, 10);
-        cursor.move_right(80, 10);
+        cursor.move_right(10);
+        cursor.move_right(10);
+        cursor.move_right(10);
         assert_eq!(cursor.x(), 4);
 
         // 短い行に移動した場合
@@ -418,7 +434,7 @@ mod tests {
     fn test_cursor_ensure_within_bounds_empty_buffer() {
         let mut cursor = Cursor::new();
         cursor.move_down(24, 10);
-        cursor.move_right(80, 10);
+        cursor.move_right(10);
 
         cursor.ensure_within_bounds(0, 0, 24);
 
@@ -446,9 +462,9 @@ mod tests {
     #[test]
     fn test_cursor_ensure_within_bounds_col_adjustment() {
         let mut cursor = Cursor::new();
-        cursor.move_right(80, 20);
-        cursor.move_right(80, 20);
-        cursor.move_right(80, 20);
+        cursor.move_right(20);
+        cursor.move_right(20);
+        cursor.move_right(20);
         assert_eq!(cursor.x(), 4);
 
         // 現在行が 2 文字しかない場合
@@ -558,11 +574,11 @@ mod tests {
         assert_eq!(cursor.col_index(), 0);
 
         // 右に1回移動: x=2 → col_index=1
-        cursor.move_right(80, 10);
+        cursor.move_right(10);
         assert_eq!(cursor.col_index(), 1);
 
         // さらに右に移動: x=3 → col_index=2
-        cursor.move_right(80, 10);
+        cursor.move_right(10);
         assert_eq!(cursor.col_index(), 2);
     }
 
@@ -574,7 +590,7 @@ mod tests {
         assert_eq!(pos, Position::new(0, 0));
 
         // 右に移動してから確認
-        cursor.move_right(80, 10);
+        cursor.move_right(10);
         let pos = cursor.position();
         assert_eq!(pos, Position::new(0, 1));
 

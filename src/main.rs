@@ -24,7 +24,11 @@ fn main() -> io::Result<()> {
     let mut editor = if args.iter().len() > 1 {
         let path = &args[1];
         match FileIO::open(path) {
-            Ok(buf) => Editor::from_buffer(buf, Some(path.clone())),
+            Ok((buf, ends_with_newline)) => {
+                let mut ed = Editor::from_buffer(buf, Some(path.clone()));
+                ed.set_ends_with_newline(ends_with_newline);
+                ed
+            }
             Err(e) => {
                 eprintln!("Error opening file: {}", e);
                 return Err(e);
@@ -81,7 +85,7 @@ fn main() -> io::Result<()> {
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
                         // Insert mode では行末+1まで移動可能
-                        cursor.move_right(size.0, line.len() + 1);
+                        cursor.move_right(line.len() + 1);
                     }
                     mode_manager.enter_insert();
                 }
@@ -155,7 +159,7 @@ fn main() -> io::Result<()> {
                     match editor.paste(pos, PasteDirection::Below) {
                         PasteResult::InLine => {
                             let line_len = editor.current_line_len(pos.row);
-                            cursor.move_right(size.0, line_len);
+                            cursor.move_right(line_len);
                         }
                         PasteResult::Below => {
                             cursor.move_down(editor_rows, editor.buffer().len());
@@ -170,7 +174,7 @@ fn main() -> io::Result<()> {
                     // Above の場合は特にカーソル移動する必要がない
                     if let PasteResult::InLine = editor.paste(pos, PasteDirection::Above) {
                         let line_len = editor.current_line_len(pos.row);
-                        cursor.move_right(size.0, line_len);
+                        cursor.move_right(line_len);
                     }
                     status_message.clear();
                 }
@@ -199,7 +203,7 @@ fn main() -> io::Result<()> {
                 Key::Char('l') => {
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
-                        cursor.move_right(size.0, line.len());
+                        cursor.move_right(line.len());
                     }
                 }
                 Key::Char('0') => cursor.move_to_line_start(),
@@ -398,10 +402,8 @@ fn main() -> io::Result<()> {
                     let pos = cursor.position();
                     editor.insert_char(pos, ch);
                     // Insert モードでは行末の次の位置まで移動可能
-                    cursor.move_right(
-                        size.0,
-                        editor.buffer().row(pos.row).map(|r| r.len()).unwrap_or(0) + 1,
-                    );
+                    let line_len = editor.buffer().row(pos.row).map(|r| r.len()).unwrap_or(0);
+                    cursor.move_right(line_len + 1);
                 }
                 _ => {}
             }
@@ -432,7 +434,7 @@ fn main() -> io::Result<()> {
                 Key::Char('l') => {
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
-                        cursor.move_right(size.0, line.len());
+                        cursor.move_right(line.len());
                     }
                 }
                 Key::Char('y') => {
@@ -470,7 +472,7 @@ fn main() -> io::Result<()> {
                             cursor.move_to_line_start();
                             let line_len = editor.current_line_len(norm_start.row);
                             for _ in 0..norm_start.col.min(line_len) {
-                                cursor.move_right(size.0, line_len);
+                                cursor.move_right(line_len);
                             }
 
                             cursor.scroll(editor_rows, editor.buffer().len());
