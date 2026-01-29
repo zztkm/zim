@@ -1,4 +1,6 @@
 use crate::cursor::Position;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 pub struct Row {
     chars: String,
@@ -22,44 +24,122 @@ impl Row {
         &self.render
     }
 
+    /// グラフィームの個数を返す
+    pub fn grapheme_count(&self) -> usize {
+        self.chars.graphemes(true).count()
+    }
+
+    /// グラフィームインデックス → バイトインデックス変換
+    fn grapheme_to_byte(&self, grapheme_idx: usize) -> Option<usize> {
+        let mut byte_idx = 0;
+        for (i, g) in self.chars.graphemes(true).enumerate() {
+            if i == grapheme_idx {
+                return Some(byte_idx);
+            }
+            byte_idx += g.len();
+        }
+        // 末尾の場合
+        if grapheme_idx == self.grapheme_count() {
+            Some(self.chars.len())
+        } else {
+            None
+        }
+    }
+
+    /// バイトインデックス → グラフィームインデックス変換
+    pub fn byte_to_grapheme(&self, byte_idx: usize) -> usize {
+        let mut current_byte = 0;
+        for (i, g) in self.chars.graphemes(true).enumerate() {
+            if current_byte >= byte_idx {
+                return i;
+            }
+            current_byte += g.len();
+        }
+        self.grapheme_count()
+    }
+
+    /// グラフィームインデックス → レンダリング位置（rx）を計算
+    pub fn render_x(&self, grapheme_idx: usize) -> usize {
+        let mut rx = 0;
+        for (i, g) in self.chars.graphemes(true).enumerate() {
+            if i >= grapheme_idx {
+                break;
+            }
+            rx += UnicodeWidthStr::width(g);
+        }
+        rx
+    }
+
+    /// レンダリング位置（rx） → グラフィームインデックスを逆算
+    pub fn render_to_grapheme(&self, rx: usize) -> usize {
+        let mut current_rx = 0;
+        for (i, g) in self.chars.graphemes(true).enumerate() {
+            let width = UnicodeWidthStr::width(g);
+            if current_rx + width > rx {
+                return i;
+            }
+            current_rx += width;
+        }
+        self.grapheme_count()
+    }
+
     pub fn len(&self) -> usize {
-        self.chars.len()
+        self.grapheme_count()
     }
     pub fn is_empty(&self) -> bool {
         self.chars.is_empty()
     }
 
-    /// 指定位置に文字を挿入
+    /// 指定位置に文字を挿入（atはグラフィームインデックス）
     pub fn insert_char(&mut self, at: usize, ch: char) {
-        if at <= self.chars.len() {
-            self.chars.insert(at, ch);
+        // グラフィームインデックスをバイトインデックスに変換
+        if let Some(byte_idx) = self.grapheme_to_byte(at) {
+            self.chars.insert(byte_idx, ch);
             // TODO: タブ展開は後で実装
             self.render = self.chars.clone();
         }
     }
 
-    /// 指定位置に文字を挿入
+    /// 指定位置に文字列を挿入（atはグラフィームインデックス）
     pub fn insert_str(&mut self, at: usize, s: &str) {
-        if at <= self.chars.len() {
-            self.chars.insert_str(at, s);
+        // グラフィームインデックスをバイトインデックスに変換
+        if let Some(byte_idx) = self.grapheme_to_byte(at) {
+            self.chars.insert_str(byte_idx, s);
             self.render = self.chars.clone();
         }
     }
 
-    /// 指定位置の文字を削除し、削除した文字を返す
+    /// 指定位置のグラフィームを削除し、最初の文字を返す
     pub fn delete_char(&mut self, at: usize) -> Option<char> {
-        if at < self.chars.len() {
-            let ch = self.chars.remove(at);
-            self.render = self.chars.clone();
-            Some(ch)
-        } else {
-            None
+        // グラフィーム単位でインデックスをチェック
+        if at >= self.grapheme_count() {
+            return None;
         }
+
+        // グラフィームベクタを作成
+        let graphemes: Vec<&str> = self.chars.graphemes(true).collect();
+
+        // 削除対象のグラフィームを取得して、その最初の文字を返す
+        let deleted_grapheme = graphemes[at];
+        let first_char = deleted_grapheme.chars().next()?;
+
+        // グラフィームを除外して再構築
+        let result: String = graphemes
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| *i != at)
+            .map(|(_, g)| g)
+            .collect();
+
+        self.chars = result;
+        self.render = self.chars.clone();
+        Some(first_char)
     }
-    /// 指定位置から末尾までを分割して返す
+    /// 指定位置から末尾までを分割して返す（atはグラフィームインデックス）
     pub fn split_off(&mut self, at: usize) -> String {
-        if at <= self.chars.len() {
-            let tail = self.chars.split_off(at);
+        // グラフィームインデックスをバイトインデックスに変換
+        if let Some(byte_idx) = self.grapheme_to_byte(at) {
+            let tail = self.chars.split_off(byte_idx);
             self.render = self.chars.clone();
             tail
         } else {

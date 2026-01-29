@@ -68,6 +68,8 @@ pub struct Editor {
     filename: Option<String>,
     /// 未保存の変更があるか
     dirty: bool,
+    /// ファイルが末尾改行で終わるか
+    ends_with_newline: bool,
     yank_manager: YankManager,
     /// システムクリップボード連携
     clipboard: Option<Clipboard>,
@@ -85,6 +87,7 @@ impl Editor {
             buffer: Buffer::new(),
             filename: None,
             dirty: false,
+            ends_with_newline: true,
             yank_manager: YankManager::new(),
             clipboard: Clipboard::new().ok(),
         }
@@ -95,27 +98,30 @@ impl Editor {
             buffer,
             filename,
             dirty: false,
+            ends_with_newline: true,
             yank_manager: YankManager::new(),
             clipboard: Clipboard::new().ok(),
         }
     }
 
     pub fn open_file(&mut self, filename: String) -> io::Result<()> {
-        let buffer = FileIO::open(&filename)?;
+        let (buffer, ends_with_newline) = FileIO::open(&filename)?;
         // Editor のプロパティを更新する
         self.buffer = buffer;
         self.filename = Some(filename);
         self.dirty = false;
+        self.ends_with_newline = ends_with_newline;
         // yank の状態は継続して良いため、YankManager は意図的に更新していない
         Ok(())
     }
 
     pub fn reload(&mut self) -> io::Result<()> {
         if let Some(filename) = &self.filename {
-            let buffer = FileIO::open(filename)?;
+            let (buffer, ends_with_newline) = FileIO::open(filename)?;
             // Editor のプロパティを更新する
             self.buffer = buffer;
             self.dirty = false;
+            self.ends_with_newline = ends_with_newline;
             Ok(())
         } else {
             Err(io::Error::new(io::ErrorKind::NotFound, "No file name"))
@@ -174,6 +180,10 @@ impl Editor {
         self.dirty
     }
 
+    pub fn set_ends_with_newline(&mut self, ends_with_newline: bool) {
+        self.ends_with_newline = ends_with_newline;
+    }
+
     /// 文字を挿入
     pub fn insert_char(&mut self, pos: Position, ch: char) {
         self.buffer.insert_char(pos, ch);
@@ -201,7 +211,7 @@ impl Editor {
     /// ファイルに保存
     pub fn save(&mut self) -> io::Result<()> {
         if let Some(filename) = &self.filename {
-            FileIO::save(filename, &self.buffer)?;
+            FileIO::save(filename, &self.buffer, self.ends_with_newline)?;
             self.dirty = false;
             Ok(())
         } else {
