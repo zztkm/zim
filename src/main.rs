@@ -81,7 +81,7 @@ fn main() -> io::Result<()> {
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
                         // Insert mode では行末+1まで移動可能
-                        cursor.move_right(size.0, line.len() + 1);
+                        cursor.move_right(size.0, line.char_count() + 1);
                     }
                     mode_manager.enter_insert();
                 }
@@ -90,7 +90,7 @@ fn main() -> io::Result<()> {
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
                         // Insert mode では行末の1つ後ろに配置
-                        let line_len = line.len() as u16;
+                        let line_len = line.char_count() as u16;
                         if line_len == 0 {
                             cursor.move_to_line_start();
                         } else {
@@ -185,7 +185,7 @@ fn main() -> io::Result<()> {
                     // 移動後の行に合わせて x 座標を調整する
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
-                        cursor.adjust_cursor_x(line.len());
+                        cursor.adjust_cursor_x(line.char_count());
                     }
                 }
                 Key::Char('k') => {
@@ -193,13 +193,13 @@ fn main() -> io::Result<()> {
                     // 移動後の行に合わせて x 座標を調整する
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
-                        cursor.adjust_cursor_x(line.len());
+                        cursor.adjust_cursor_x(line.char_count());
                     }
                 }
                 Key::Char('l') => {
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
-                        cursor.move_right(size.0, line.len());
+                        cursor.move_right(size.0, line.char_count());
                     }
                 }
                 Key::Char('0') => cursor.move_to_line_start(),
@@ -207,7 +207,7 @@ fn main() -> io::Result<()> {
                     // 現在の行の長さを取得して行末に移動
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
-                        cursor.move_to_line_end(line.len() as u16);
+                        cursor.move_to_line_end(line.char_count() as u16);
                     }
                 }
                 Key::Char('g') => {
@@ -217,7 +217,7 @@ fn main() -> io::Result<()> {
                         // 移動後の行に合わせて x 座標を調整する
                         let row = cursor.file_row();
                         if let Some(line) = editor.buffer().row(row) {
-                            cursor.adjust_cursor_x(line.len());
+                            cursor.adjust_cursor_x(line.char_count());
                         }
                     } else {
                         next_pending_key = Some('g');
@@ -228,7 +228,7 @@ fn main() -> io::Result<()> {
                     // 移動後の行に合わせて x 座標を調整する
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
-                        cursor.adjust_cursor_x(line.len());
+                        cursor.adjust_cursor_x(line.char_count());
                     }
                 }
                 _ => {}
@@ -387,7 +387,7 @@ fn main() -> io::Result<()> {
                         // 行頭で Backspace + 前の行と結合
                         let prev_row = pos.row - 1;
                         let prev_line_len =
-                            editor.buffer().row(prev_row).map(|r| r.len()).unwrap_or(0);
+                            editor.buffer().row(prev_row).map(|r| r.char_count()).unwrap_or(0);
                         editor.join_rows(pos.row);
                         cursor.move_up();
                         cursor.move_to_line_end((prev_line_len as u16) + 1);
@@ -400,7 +400,7 @@ fn main() -> io::Result<()> {
                     // Insert モードでは行末の次の位置まで移動可能
                     cursor.move_right(
                         size.0,
-                        editor.buffer().row(pos.row).map(|r| r.len()).unwrap_or(0) + 1,
+                        editor.buffer().row(pos.row).map(|r| r.char_count()).unwrap_or(0) + 1,
                     );
                 }
                 _ => {}
@@ -418,7 +418,7 @@ fn main() -> io::Result<()> {
                     // 移動後の行に合わせて x 座標を調整する
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
-                        cursor.adjust_cursor_x(line.len());
+                        cursor.adjust_cursor_x(line.char_count());
                     }
                 }
                 Key::Char('k') => {
@@ -426,13 +426,13 @@ fn main() -> io::Result<()> {
                     // 移動後の行に合わせて x 座標を調整する
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
-                        cursor.adjust_cursor_x(line.len());
+                        cursor.adjust_cursor_x(line.char_count());
                     }
                 }
                 Key::Char('l') => {
                     let row = cursor.file_row();
                     if let Some(line) = editor.buffer().row(row) {
-                        cursor.move_right(size.0, line.len());
+                        cursor.move_right(size.0, line.char_count());
                     }
                 }
                 Key::Char('y') => {

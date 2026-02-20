@@ -25,46 +25,60 @@ impl Row {
     pub fn len(&self) -> usize {
         self.chars.len()
     }
+
+    /// Unicode 文字数を返す (char 単位)
+    pub fn char_count(&self) -> usize {
+        self.chars.chars().count()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.chars.is_empty()
     }
 
     /// 指定位置に文字を挿入
     pub fn insert_char(&mut self, at: usize, ch: char) {
-        if at <= self.chars.len() {
-            self.chars.insert(at, ch);
-            // TODO: タブ展開は後で実装
-            self.render = self.chars.clone();
-        }
+        let byte_pos = self.chars
+            .char_indices()
+            .nth(at)
+            .map(|(b, _)| b)
+            .unwrap_or(self.chars.len());
+        self.chars.insert(byte_pos, ch);
+        // TODO: タブ展開は後で実装
+        self.render = self.chars.clone();
     }
 
-    /// 指定位置に文字を挿入
+    /// 指定位置に文字列を挿入
     pub fn insert_str(&mut self, at: usize, s: &str) {
-        if at <= self.chars.len() {
-            self.chars.insert_str(at, s);
-            self.render = self.chars.clone();
-        }
+        let byte_pos = self.chars
+            .char_indices()
+            .nth(at)
+            .map(|(b, _)| b)
+            .unwrap_or(self.chars.len());
+        self.chars.insert_str(byte_pos, s);
+        self.render = self.chars.clone();
     }
 
     /// 指定位置の文字を削除し、削除した文字を返す
     pub fn delete_char(&mut self, at: usize) -> Option<char> {
-        if at < self.chars.len() {
-            let ch = self.chars.remove(at);
+        if let Some((byte_pos, ch)) = self.chars.char_indices().nth(at) {
+            self.chars.remove(byte_pos);
             self.render = self.chars.clone();
             Some(ch)
         } else {
             None
         }
     }
+
     /// 指定位置から末尾までを分割して返す
     pub fn split_off(&mut self, at: usize) -> String {
-        if at <= self.chars.len() {
-            let tail = self.chars.split_off(at);
-            self.render = self.chars.clone();
-            tail
-        } else {
-            String::new()
-        }
+        let byte_pos = self.chars
+            .char_indices()
+            .nth(at)
+            .map(|(b, _)| b)
+            .unwrap_or(self.chars.len());
+        let tail = self.chars.split_off(byte_pos);
+        self.render = self.chars.clone();
+        tail
     }
 
     /// 文字列を末尾に追加
@@ -192,6 +206,38 @@ mod tests {
         let row = Row::new("hello".to_string());
         assert_eq!(row.chars(), "hello");
         assert_eq!(row.len(), 5);
+        assert_eq!(row.char_count(), 5);
+    }
+
+    #[test]
+    fn test_row_char_count_multibyte() {
+        // 「あいう」は UTF-8 で 9バイトだが文字数は 3
+        let row = Row::new("あいう".to_string());
+        assert_eq!(row.len(), 9);
+        assert_eq!(row.char_count(), 3);
+    }
+
+    #[test]
+    fn test_row_insert_char_multibyte() {
+        let mut row = Row::new("あう".to_string());
+        row.insert_char(1, 'い');
+        assert_eq!(row.chars(), "あいう");
+    }
+
+    #[test]
+    fn test_row_delete_char_multibyte() {
+        let mut row = Row::new("あいう".to_string());
+        let ch = row.delete_char(1);
+        assert_eq!(ch, Some('い'));
+        assert_eq!(row.chars(), "あう");
+    }
+
+    #[test]
+    fn test_row_split_off_multibyte() {
+        let mut row = Row::new("あいう".to_string());
+        let tail = row.split_off(1);
+        assert_eq!(row.chars(), "あ");
+        assert_eq!(tail, "いう");
     }
 
     #[test]

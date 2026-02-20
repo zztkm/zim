@@ -8,4 +8,5 @@ termion = "4"
 anyhow = "1.0"
 thiserror = "2.0"
 arboard = "3.6.1"
+unicode-width = "0.1"
 

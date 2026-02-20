@@ -197,6 +197,10 @@ impl Screen {
         Self::draw_command_line(stdout, mode, command_buffer, status_message)?;
 
         // カーソル位置に移動
+        let current_line = buffer
+            .row(cursor.file_row())
+            .map(|r| r.chars())
+            .unwrap_or("");
         match mode {
             Mode::Command => {
                 // コマンドモード時はコマンドライン上にカーソル
@@ -207,8 +211,12 @@ impl Screen {
                 )?;
             }
             Mode::Normal | Mode::Insert | Mode::Visual => {
-                // ノーマルモード時はエディタ上にカーソル
-                write!(stdout, "{}", termion::cursor::Goto(cursor.x(), cursor.y()))?;
+                // 全角文字を考慮した端末カラム位置を使用
+                write!(
+                    stdout,
+                    "{}",
+                    termion::cursor::Goto(cursor.screen_col(current_line), cursor.y())
+                )?;
             }
         }
 

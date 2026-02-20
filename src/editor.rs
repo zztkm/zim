@@ -153,7 +153,7 @@ impl Editor {
         let line_len = if buffer_len > 0 {
             self.buffer
                 .row(row.min(buffer_len - 1))
-                .map(|r| r.len())
+                .map(|r| r.char_count())
                 .unwrap_or(0)
         } else {
             0
@@ -163,7 +163,7 @@ impl Editor {
 
     /// 現在のカーソル位置の行の長さを取得
     pub fn current_line_len(&self, row: usize) -> usize {
-        self.buffer.row(row).map(|r| r.len()).unwrap_or(0)
+        self.buffer.row(row).map(|r| r.char_count()).unwrap_or(0)
     }
 
     pub fn filename(&self) -> Option<&str> {
@@ -215,7 +215,7 @@ impl Editor {
     /// カーソル位置の文字を削除する
     pub fn delete_char_at_cursor(&mut self, pos: Position) -> bool {
         if let Some(line) = self.buffer.row(pos.row)
-            && pos.col < line.len()
+            && pos.col < line.char_count()
         {
             // 削除文字列を取得できた場合は yank_buffer に入れる
             if let Some(ch) = self.buffer.delete_char(pos) {
@@ -399,8 +399,7 @@ impl Editor {
                 PasteDirection::Above => pos.col,
             };
             if let Some(r) = self.buffer.row_mut(pos.row) {
-                // 挿入位置が行末を超えないようにクランプ
-                let safe_col = col.min(r.len());
+                let safe_col = col.min(r.char_count());
                 r.insert_str(safe_col, &self.yank_manager.content()[0]);
                 self.dirty = true;
                 PasteResult::InLine

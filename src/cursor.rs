@@ -264,6 +264,20 @@ impl Cursor {
     pub fn position(&self) -> Position {
         Position::new(self.file_row(), self.col_index())
     }
+
+    /// カーソルの端末上の表示カラム番号を返す（1-indexed）
+    ///
+    /// 全角文字は2カラム占有するため、端末の Goto にはこのメソッドの値を使う。
+    pub fn screen_col(&self, line: &str) -> u16 {
+        use unicode_width::UnicodeWidthChar;
+        let col_idx = self.col_index(); // 0-indexed char position
+        let width: usize = line
+            .chars()
+            .take(col_idx)
+            .map(|c| c.width().unwrap_or(1))
+            .sum();
+        (width as u16) + 1
+    }
 }
 
 #[cfg(test)]
