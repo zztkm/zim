@@ -90,6 +90,7 @@ impl Row {
 
 pub struct Buffer {
     rows: Vec<Row>,
+    trailing_newline: bool,
 }
 
 impl Default for Buffer {
@@ -100,7 +101,15 @@ impl Default for Buffer {
 
 impl Buffer {
     pub fn new() -> Self {
-        Self { rows: Vec::new() }
+        Self { rows: Vec::new(), trailing_newline: false }
+    }
+
+    pub fn trailing_newline(&self) -> bool {
+        self.trailing_newline
+    }
+
+    pub fn set_trailing_newline(&mut self, value: bool) {
+        self.trailing_newline = value;
     }
 
     pub fn insert_row(&mut self, at: usize, text: String) {
