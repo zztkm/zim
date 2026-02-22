@@ -2,11 +2,7 @@ use std::io;
 
 use termion::input::TermRead;
 use zim::{
-    app::App,
-    editor::Editor,
-    file_io::FileIO,
-    handler::HandlerResult,
-    logger,
+    app::App, buffer::Buffer, editor::Editor, file_io::FileIO, handler::HandlerResult, logger,
     terminal::Terminal,
 };
 
@@ -24,6 +20,11 @@ fn main() -> io::Result<()> {
         let path = &args[1];
         match FileIO::open(path) {
             Ok(buf) => Editor::from_buffer(buf, Some(path.clone())),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                // ファイルが存在しない場合は空バッファで開く
+                // こうすることで保存時にファイルが作成される
+                Editor::from_buffer(Buffer::new(), Some(path.clone()))
+            }
             Err(e) => {
                 eprintln!("Error opening file: {}", e);
                 return Err(e);
