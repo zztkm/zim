@@ -1,6 +1,4 @@
-use arboard::Clipboard;
-
-use crate::{buffer::Buffer, cursor::Position, file_io::FileIO};
+use crate::{buffer::Buffer, cursor::Position, file_io::FileIO, yank::YankManager};
 use std::io;
 
 pub enum PasteDirection {
@@ -20,57 +18,12 @@ pub enum PasteResult {
     Below,
 }
 
-enum YankType {
-    /// 行内にペースト
-    InLine,
-    /// 新しい行としてペースト
-    NewLine,
-}
-
-struct YankManager {
-    buffer: Vec<String>,
-    yank_type: YankType,
-}
-
-impl YankManager {
-    pub fn new() -> Self {
-        Self {
-            buffer: Vec::new(),
-            yank_type: YankType::InLine,
-        }
-    }
-
-    pub fn yank_inline(&mut self, text: String) {
-        self.buffer = vec![text];
-        self.yank_type = YankType::InLine;
-    }
-
-    pub fn yank_line(&mut self, text: String) {
-        self.buffer = vec![text];
-        self.yank_type = YankType::NewLine;
-    }
-
-    pub fn is_newline_yank(&self) -> bool {
-        matches!(self.yank_type, YankType::NewLine)
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.buffer.is_empty()
-    }
-
-    pub fn content(&self) -> &[String] {
-        &self.buffer
-    }
-}
-
 pub struct Editor {
     buffer: Buffer,
     filename: Option<String>,
     /// 未保存の変更があるか
     dirty: bool,
-    yank_manager: YankManager,
-    /// システムクリップボード連携
-    clipboard: Option<Clipboard>,
+    pub yank: YankManager,
 }
 
 impl Default for Editor {
@@ -85,8 +38,7 @@ impl Editor {
             buffer: Buffer::new(),
             filename: None,
             dirty: false,
-            yank_manager: YankManager::new(),
-            clipboard: Clipboard::new().ok(),
+            yank: YankManager::new(),
         }
     }
 
@@ -95,8 +47,7 @@ impl Editor {
             buffer,
             filename,
             dirty: false,
-            yank_manager: YankManager::new(),
-            clipboard: Clipboard::new().ok(),
+            yank: YankManager::new(),
         }
     }
 
@@ -119,17 +70,6 @@ impl Editor {
             Ok(())
         } else {
             Err(io::Error::new(io::ErrorKind::NotFound, "No file name"))
-        }
-    }
-
-    pub fn sync_to_clipboard(&mut self) {
-        if let Some(clipboard) = &mut self.clipboard
-            && !self.yank_manager.is_empty()
-        {
-            let text = self.yank_manager.content().join("\n");
-            // set_text に失敗しても無視する
-            // TODO: ステータスメッセージに連携するかはあとで検討
-            let _ = clipboard.set_text(text);
         }
     }
 
@@ -219,8 +159,8 @@ impl Editor {
         {
             // 削除文字列を取得できた場合は yank_buffer に入れる
             if let Some(ch) = self.buffer.delete_char(pos) {
-                self.yank_manager.yank_inline(ch.to_string());
-                self.sync_to_clipboard();
+                self.yank.yank_inline(ch.to_string());
+                self.yank.sync_to_clipboard();
             }
             self.dirty = true;
             return true;
@@ -231,8 +171,8 @@ impl Editor {
     /// 指定行を削除してヤンクバッファに保存 (dd 用
     pub fn delete_line(&mut self, row: usize) -> bool {
         if let Some(content) = self.buffer.delete_row_with_content(row) {
-            self.yank_manager.yank_line(content);
-            self.sync_to_clipboard();
+            self.yank.yank_line(content);
+            self.yank.sync_to_clipboard();
             self.dirty = true;
             true
         } else {
@@ -243,8 +183,8 @@ impl Editor {
     /// ヤンクバッファにコピーする (yy 用
     pub fn yank_line(&mut self, row: usize) -> bool {
         if let Some(content) = self.buffer.get_row_content(row) {
-            self.yank_manager.yank_line(content);
-            self.sync_to_clipboard();
+            self.yank.yank_line(content);
+            self.yank.sync_to_clipboard();
             true
         } else {
             false
@@ -261,14 +201,14 @@ impl Editor {
 
         if yank_lines.len() == 1 {
             // 単一行の場合は inline
-            self.yank_manager.yank_inline(yank_lines[0].clone());
+            self.yank.yank_inline(yank_lines[0].clone());
         } else {
             for line in yank_lines {
-                self.yank_manager.yank_line(line);
+                self.yank.yank_line(line);
             }
         }
 
-        self.sync_to_clipboard();
+        self.yank.sync_to_clipboard();
         true
     }
 
@@ -329,11 +269,6 @@ impl Editor {
         }
     }
 
-    fn is_in_selection(pos: Position, start: Position, end: Position) -> bool {
-        let (norm_start, norm_end) = Self::normalize_range(start, end);
-        pos >= norm_start && pos <= norm_end
-    }
-
     fn extract_range_text(&self, start: Position, end: Position) -> Vec<String> {
         let (norm_start, norm_end) = Self::normalize_range(start, end);
         let mut result = Vec::new();
@@ -372,21 +307,21 @@ impl Editor {
     }
 
     pub fn paste(&mut self, pos: Position, direction: PasteDirection) -> PasteResult {
-        if self.yank_manager.is_empty() {
+        if self.yank.is_empty() {
             return PasteResult::Empty;
         }
 
-        if self.yank_manager.is_newline_yank() {
+        if self.yank.is_newline_yank() {
             match direction {
                 PasteDirection::Below => {
-                    for (i, line) in self.yank_manager.content().iter().enumerate() {
+                    for (i, line) in self.yank.content().iter().enumerate() {
                         self.buffer.insert_row(pos.row + i + 1, line.clone());
                     }
                     self.dirty = true;
                     PasteResult::Below
                 }
                 PasteDirection::Above => {
-                    for (i, line) in self.yank_manager.content().iter().enumerate() {
+                    for (i, line) in self.yank.content().iter().enumerate() {
                         self.buffer.insert_row(pos.row + i, line.clone());
                     }
                     self.dirty = true;
@@ -400,7 +335,7 @@ impl Editor {
             };
             if let Some(r) = self.buffer.row_mut(pos.row) {
                 let safe_col = col.min(r.char_count());
-                r.insert_str(safe_col, &self.yank_manager.content()[0]);
+                r.insert_str(safe_col, &self.yank.content()[0]);
                 self.dirty = true;
                 PasteResult::InLine
             } else {
@@ -414,51 +349,6 @@ impl Editor {
 mod tests {
     use super::*;
 
-    // YankManager のテスト
-    #[test]
-    fn test_yank_manager_new() {
-        let ym = YankManager::new();
-        assert!(ym.is_empty());
-        assert!(!ym.is_newline_yank());
-    }
-
-    #[test]
-    fn test_yank_manager_yank_inline() {
-        let mut ym = YankManager::new();
-        ym.yank_inline("hello".to_string());
-
-        assert!(!ym.is_empty());
-        assert!(!ym.is_newline_yank());
-        assert_eq!(ym.content(), &["hello"]);
-    }
-
-    #[test]
-    fn test_yank_manager_yank_line() {
-        let mut ym = YankManager::new();
-        ym.yank_line("line content".to_string());
-
-        assert!(!ym.is_empty());
-        assert!(ym.is_newline_yank());
-        assert_eq!(ym.content(), &["line content"]);
-    }
-
-    #[test]
-    fn test_yank_manager_type_change() {
-        let mut ym = YankManager::new();
-
-        // InLine → NewLine
-        ym.yank_inline("char".to_string());
-        assert!(!ym.is_newline_yank());
-
-        ym.yank_line("line".to_string());
-        assert!(ym.is_newline_yank());
-
-        // NewLine → InLine
-        ym.yank_inline("char2".to_string());
-        assert!(!ym.is_newline_yank());
-    }
-
-    // Editor のテスト
     #[test]
     fn test_editor_new() {
         let editor = Editor::new();
@@ -489,8 +379,8 @@ mod tests {
         assert!(editor.is_dirty());
         assert_eq!(editor.buffer().len(), 1);
         assert_eq!(editor.buffer().row(0).unwrap().chars(), "line2");
-        assert!(editor.yank_manager.is_newline_yank());
-        assert_eq!(editor.yank_manager.content(), &["line1"]);
+        assert!(editor.yank.is_newline_yank());
+        assert_eq!(editor.yank.content(), &["line1"]);
     }
 
     #[test]
@@ -503,8 +393,8 @@ mod tests {
         assert!(success);
         assert!(!editor.is_dirty()); // yank は dirty にしない
         assert_eq!(editor.buffer().len(), 1); // バッファは変更なし
-        assert!(editor.yank_manager.is_newline_yank());
-        assert_eq!(editor.yank_manager.content(), &["content"]);
+        assert!(editor.yank.is_newline_yank());
+        assert_eq!(editor.yank.content(), &["content"]);
     }
 
     #[test]
@@ -517,15 +407,15 @@ mod tests {
         assert!(success);
         assert!(editor.is_dirty());
         assert_eq!(editor.buffer().row(0).unwrap().chars(), "ello");
-        assert!(!editor.yank_manager.is_newline_yank()); // 文字削除は InLine
-        assert_eq!(editor.yank_manager.content(), &["h"]);
+        assert!(!editor.yank.is_newline_yank()); // 文字削除は InLine
+        assert_eq!(editor.yank.content(), &["h"]);
     }
 
     #[test]
     fn test_editor_paste_newline_below() {
         let mut editor = Editor::new();
         editor.buffer_mut().insert_row(0, "line1".to_string());
-        editor.yank_manager.yank_line("yanked".to_string());
+        editor.yank.yank_line("yanked".to_string());
 
         let result = editor.paste(Position::new(0, 0), PasteDirection::Below);
 
@@ -539,7 +429,7 @@ mod tests {
     fn test_editor_paste_newline_above() {
         let mut editor = Editor::new();
         editor.buffer_mut().insert_row(0, "line1".to_string());
-        editor.yank_manager.yank_line("yanked".to_string());
+        editor.yank.yank_line("yanked".to_string());
 
         let result = editor.paste(Position::new(0, 0), PasteDirection::Above);
 
@@ -553,7 +443,7 @@ mod tests {
     fn test_editor_paste_inline_below() {
         let mut editor = Editor::new();
         editor.buffer_mut().insert_row(0, "helo".to_string());
-        editor.yank_manager.yank_inline("l".to_string());
+        editor.yank.yank_inline("l".to_string());
 
         // col=2 (e の後ろ) で Below なので col+1=3 に挿入
         let result = editor.paste(Position::new(0, 2), PasteDirection::Below);
@@ -566,7 +456,7 @@ mod tests {
     fn test_editor_paste_inline_above() {
         let mut editor = Editor::new();
         editor.buffer_mut().insert_row(0, "helo".to_string());
-        editor.yank_manager.yank_inline("l".to_string());
+        editor.yank.yank_inline("l".to_string());
 
         // col=3 (o の位置) で Above なので col=3 に挿入
         let result = editor.paste(Position::new(0, 3), PasteDirection::Above);
@@ -601,18 +491,4 @@ mod tests {
         assert_eq!(norm_end, end);
     }
 
-    #[test]
-    fn test_is_in_selection() {
-        let start = Position::new(1, 5);
-        let end = Position::new(3, 2);
-
-        // 範囲内チェックテスト
-        assert!(Editor::is_in_selection(Position::new(2, 0), start, end));
-        assert!(Editor::is_in_selection(Position::new(1, 5), start, end));
-        assert!(Editor::is_in_selection(Position::new(3, 2), start, end));
-
-        // 範囲外
-        assert!(!Editor::is_in_selection(Position::new(0, 0), start, end));
-        assert!(!Editor::is_in_selection(Position::new(4, 0), start, end));
-    }
 }
