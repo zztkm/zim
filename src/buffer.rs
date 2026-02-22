@@ -37,7 +37,8 @@ impl Row {
 
     /// 指定位置に文字を挿入
     pub fn insert_char(&mut self, at: usize, ch: char) {
-        let byte_pos = self.chars
+        let byte_pos = self
+            .chars
             .char_indices()
             .nth(at)
             .map(|(b, _)| b)
@@ -49,7 +50,8 @@ impl Row {
 
     /// 指定位置に文字列を挿入
     pub fn insert_str(&mut self, at: usize, s: &str) {
-        let byte_pos = self.chars
+        let byte_pos = self
+            .chars
             .char_indices()
             .nth(at)
             .map(|(b, _)| b)
@@ -71,7 +73,8 @@ impl Row {
 
     /// 指定位置から末尾までを分割して返す
     pub fn split_off(&mut self, at: usize) -> String {
-        let byte_pos = self.chars
+        let byte_pos = self
+            .chars
             .char_indices()
             .nth(at)
             .map(|(b, _)| b)
@@ -101,7 +104,10 @@ impl Default for Buffer {
 
 impl Buffer {
     pub fn new() -> Self {
-        Self { rows: Vec::new(), trailing_newline: false }
+        Self {
+            rows: Vec::new(),
+            trailing_newline: false,
+        }
     }
 
     pub fn trailing_newline(&self) -> bool {

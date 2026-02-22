@@ -39,8 +39,11 @@ pub fn handle(
             } else if pos.row > 0 {
                 // 行頭で Backspace + 前の行と結合
                 let prev_row = pos.row - 1;
-                let prev_line_len =
-                    editor.buffer().row(prev_row).map(|r| r.char_count()).unwrap_or(0);
+                let prev_line_len = editor
+                    .buffer()
+                    .row(prev_row)
+                    .map(|r| r.char_count())
+                    .unwrap_or(0);
                 editor.join_rows(pos.row);
                 cursor.move_up();
                 cursor.move_to_line_end((prev_line_len as u16) + 1);
@@ -53,7 +56,12 @@ pub fn handle(
             // Insert モードでは行末の次の位置まで移動可能
             cursor.move_right(
                 terminal_size.0,
-                editor.buffer().row(pos.row).map(|r| r.char_count()).unwrap_or(0) + 1,
+                editor
+                    .buffer()
+                    .row(pos.row)
+                    .map(|r| r.char_count())
+                    .unwrap_or(0)
+                    + 1,
             );
         }
         _ => {}

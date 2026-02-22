@@ -490,5 +490,4 @@ mod tests {
         assert_eq!(norm_start, start);
         assert_eq!(norm_end, end);
     }
-
 }
