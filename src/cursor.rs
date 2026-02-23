@@ -153,7 +153,7 @@ impl Cursor {
             self.row_offset = 0;
         } else {
             // スクロールが必要な場合
-            self.row_offset = last_line.saturating_sub(editor_rows - 1);
+            self.row_offset = last_line.saturating_sub(editor_rows.saturating_sub(1));
             self.y = last_line - self.row_offset + 1;
         }
     }
@@ -216,7 +216,7 @@ impl Cursor {
                 self.y = last_row + 1;
                 self.row_offset = 0;
             } else {
-                self.row_offset = last_row.saturating_sub(editor_rows - 1);
+                self.row_offset = last_row.saturating_sub(editor_rows.saturating_sub(1));
                 self.y = last_row - self.row_offset + 1;
             }
             return;
@@ -229,7 +229,7 @@ impl Cursor {
 
         // 画面下端より下にカーソルがある場合
         if file_row >= self.row_offset + editor_rows {
-            self.row_offset = file_row.saturating_sub(editor_rows - 1);
+            self.row_offset = file_row.saturating_sub(editor_rows.saturating_sub(1));
         }
 
         // カーソルの y 座標を画面内の位置に調整
