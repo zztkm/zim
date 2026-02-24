@@ -6,6 +6,7 @@ pub enum Mode {
     Command,
     Insert,
     Visual,
+    VisualLine,
 }
 
 pub struct ModeManager {
@@ -48,6 +49,11 @@ impl ModeManager {
         self.current = Mode::Visual;
     }
 
+    pub fn enter_visual_line(&mut self, pos: Position) {
+        self.visual_start = Some(pos);
+        self.current = Mode::VisualLine;
+    }
+
     pub fn is_normal(&self) -> bool {
         self.current == Mode::Normal
     }
@@ -62,6 +68,10 @@ impl ModeManager {
 
     pub fn is_visual(&self) -> bool {
         self.current() == Mode::Visual
+    }
+
+    pub fn is_visual_line(&self) -> bool {
+        self.current() == Mode::VisualLine
     }
 
     pub fn clear_visual(&mut self) {

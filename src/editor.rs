@@ -191,6 +191,36 @@ impl Editor {
         }
     }
 
+    /// 複数行ヤンク (VisualLine mode 用)
+    pub fn yank_lines_range(&mut self, start_row: usize, end_row: usize) -> bool {
+        let min_row = start_row.min(end_row);
+        let max_row = start_row.max(end_row);
+        let lines: Vec<String> = (min_row..=max_row)
+            .filter_map(|r| self.buffer.get_row_content(r))
+            .collect();
+        if lines.is_empty() {
+            return false;
+        }
+        self.yank.yank_lines(lines);
+        self.yank.sync_to_clipboard();
+        true
+    }
+
+    /// 複数行削除してヤンク (VisualLine mode 用)
+    pub fn delete_lines_range(&mut self, start_row: usize, end_row: usize) -> bool {
+        let min_row = start_row.min(end_row);
+        let max_row = start_row.max(end_row);
+        if !self.yank_lines_range(min_row, max_row) {
+            return false;
+        }
+        let count = max_row - min_row + 1;
+        for _ in 0..count {
+            self.buffer.delete_row(min_row);
+        }
+        self.dirty = true;
+        true
+    }
+
     /// 範囲ヤンク(Visual mode 用)
     pub fn yank_range(&mut self, start: Position, end: Position) -> bool {
         let yank_lines = self.extract_range_text(start, end);

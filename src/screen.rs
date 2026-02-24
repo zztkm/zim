@@ -19,6 +19,7 @@ impl Screen {
         buffer: &Buffer,
         row_offset: u16,
         selection: Option<(Position, Position)>,
+        line_selection: bool,
     ) -> io::Result<()> {
         let editor_rows = Self::editor_rows(rows);
 
@@ -42,37 +43,54 @@ impl Screen {
 
                         // この行が選択範囲内かチェック
                         if file_row >= norm_start.row && file_row <= norm_end.row {
-                            // 行内の選択範囲を計算
-                            let start_col = if file_row == norm_start.row {
-                                norm_start.col
+                            if line_selection {
+                                // 行全体をハイライト
+                                write!(stdout, "{}", termion::style::Invert)?;
+                                if chars.is_empty() {
+                                    write!(stdout, " ")?;
+                                } else {
+                                    let display: String = if chars.len() > 80 {
+                                        chars.iter().take(80).collect()
+                                    } else {
+                                        text.to_string()
+                                    };
+                                    write!(stdout, "{}", display)?;
+                                }
+                                write!(stdout, "{}", termion::style::Reset)?;
                             } else {
-                                0
-                            };
+                                // 行内の選択範囲を計算
+                                let start_col = if file_row == norm_start.row {
+                                    norm_start.col
+                                } else {
+                                    0
+                                };
 
-                            let end_col = if file_row == norm_end.row {
-                                norm_end.col.min(chars.len().saturating_sub(1))
-                            } else {
-                                chars.len().saturating_sub(1)
-                            };
+                                let end_col = if file_row == norm_end.row {
+                                    norm_end.col.min(chars.len().saturating_sub(1))
+                                } else {
+                                    chars.len().saturating_sub(1)
+                                };
 
-                            // ハイライト表示
-                            // 選択前
-                            let before: String = chars.iter().take(start_col).collect();
-                            write!(stdout, "{}", before)?;
+                                // ハイライト表示
+                                // 選択前
+                                let before: String = chars.iter().take(start_col).collect();
+                                write!(stdout, "{}", before)?;
 
-                            // 選択部分（反転）
-                            write!(stdout, "{}", termion::style::Invert)?;
-                            let selected: String = chars
-                                .iter()
-                                .skip(start_col)
-                                .take(end_col.saturating_sub(start_col) + 1)
-                                .collect();
-                            write!(stdout, "{}", selected)?;
-                            write!(stdout, "{}", termion::style::Reset)?;
+                                // 選択部分（反転）
+                                write!(stdout, "{}", termion::style::Invert)?;
+                                let selected: String = chars
+                                    .iter()
+                                    .skip(start_col)
+                                    .take(end_col.saturating_sub(start_col) + 1)
+                                    .collect();
+                                write!(stdout, "{}", selected)?;
+                                write!(stdout, "{}", termion::style::Reset)?;
 
-                            // 選択後
-                            let after: String = chars.iter().skip(end_col + 1).take(80).collect();
-                            write!(stdout, "{}", after)?;
+                                // 選択後
+                                let after: String =
+                                    chars.iter().skip(end_col + 1).take(80).collect();
+                                write!(stdout, "{}", after)?;
+                            }
                         } else {
                             // 選択範囲外の通常表示
                             let display_text: String = if chars.len() > 80 {
@@ -159,6 +177,9 @@ impl Screen {
             Mode::Visual => {
                 write!(stdout, "-- Visual --")?;
             }
+            Mode::VisualLine => {
+                write!(stdout, "-- VISUAL LINE --")?;
+            }
         }
         Ok(())
     }
@@ -180,15 +201,22 @@ impl Screen {
 
         let size = termion::terminal_size()?;
 
-        // Visual モードの場合は選択範囲を計算
-        let selection = if mode == Mode::Visual {
-            visual_start.map(|start| (start, cursor.position()))
-        } else {
-            None
+        // Visual / VisualLine モードの場合は選択範囲を計算
+        let (selection, line_selection) = match mode {
+            Mode::Visual => (visual_start.map(|start| (start, cursor.position())), false),
+            Mode::VisualLine => (visual_start.map(|start| (start, cursor.position())), true),
+            _ => (None, false),
         };
 
         // 行を描画
-        Self::draw_rows(stdout, size.1, buffer, cursor.row_offset(), selection)?;
+        Self::draw_rows(
+            stdout,
+            size.1,
+            buffer,
+            cursor.row_offset(),
+            selection,
+            line_selection,
+        )?;
 
         // ステータスバー描画
         Self::draw_status_bar(stdout, filename, buffer.len(), cursor.file_row())?;
@@ -210,7 +238,7 @@ impl Screen {
                     termion::cursor::Goto((command_buffer.len() as u16) + 2, size.1)
                 )?;
             }
-            Mode::Normal | Mode::Insert | Mode::Visual => {
+            Mode::Normal | Mode::Insert | Mode::Visual | Mode::VisualLine => {
                 // 全角文字を考慮した端末カラム位置を使用
                 write!(
                     stdout,
@@ -226,8 +254,8 @@ impl Screen {
                 // Insert モードでは縦棒カーソル
                 write!(stdout, "{}", termion::cursor::SteadyBar)?;
             }
-            Mode::Normal | Mode::Command | Mode::Visual => {
-                // Normal/Command モードではブロックカーソル
+            Mode::Normal | Mode::Command | Mode::Visual | Mode::VisualLine => {
+                // Normal/Command/Visual モードではブロックカーソル
                 write!(stdout, "{}", termion::cursor::SteadyBlock)?;
             }
         }

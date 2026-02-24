@@ -34,6 +34,11 @@ impl YankManager {
         self.yank_type = YankType::NewLine;
     }
 
+    pub fn yank_lines(&mut self, lines: Vec<String>) {
+        self.buffer = lines;
+        self.yank_type = YankType::NewLine;
+    }
+
     pub fn is_newline_yank(&self) -> bool {
         matches!(self.yank_type, YankType::NewLine)
     }

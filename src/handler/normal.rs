@@ -135,6 +135,9 @@ pub fn handle(
         Key::Char('v') => {
             mode_manager.enter_visual(cursor.position());
         }
+        Key::Char('V') => {
+            mode_manager.enter_visual_line(cursor.position());
+        }
         // 移動系
         Key::Char('h') => cursor.move_left(),
         Key::Char('j') => {

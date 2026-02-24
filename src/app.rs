@@ -81,6 +81,14 @@ impl App {
                 self.terminal_size,
                 self.editor_rows,
             )
+        } else if self.mode_manager.is_visual_line() {
+            handler::visual_line::handle(
+                key,
+                &mut self.editor,
+                &mut self.cursor,
+                &mut self.mode_manager,
+                self.editor_rows,
+            )
         } else {
             HandlerResult::Continue
         };
