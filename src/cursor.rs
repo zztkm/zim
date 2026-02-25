@@ -236,6 +236,14 @@ impl Cursor {
         self.y = file_row - self.row_offset + 1;
     }
 
+    /// カーソル位置をスナップショットから復元する
+    pub fn restore(&mut self, x: u16, y: u16, row_offset: u16) {
+        self.x = x;
+        self.y = y;
+        self.row_offset = row_offset;
+        self.col_offset = 0;
+    }
+
     /// ファイル内の実際の行番号を取得する (0-indexed)
     ///
     /// カーソルの画面上の位置 y とスクロールオフセット row_offset から

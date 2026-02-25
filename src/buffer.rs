@@ -1,5 +1,6 @@
 use crate::cursor::Position;
 
+#[derive(Clone)]
 pub struct Row {
     chars: String,
     render: String,
@@ -91,6 +92,7 @@ impl Row {
     }
 }
 
+#[derive(Clone)]
 pub struct Buffer {
     rows: Vec<Row>,
     trailing_newline: bool,

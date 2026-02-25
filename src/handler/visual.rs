@@ -56,6 +56,7 @@ pub fn handle(
         Key::Char('d') => {
             // 削除してヤンク
             if let Some(start) = mode_manager.visual_start() {
+                editor.history.commit(editor.snapshot(cursor));
                 let end = cursor.position();
                 if editor.delete_range(start, end) {
                     // 削除後、カーソルを範囲の開始位置に移動

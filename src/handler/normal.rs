@@ -21,16 +21,39 @@ pub fn handle(
         Key::Char(':') => {
             mode_manager.enter_command();
         }
+        Key::Char('u') => {
+            let current = editor.snapshot(cursor);
+            if let Some(prev) = editor.history.undo(current) {
+                editor.restore_snapshot(prev, cursor);
+                let (buf_len, line_len) = editor.buffer_info(cursor.file_row());
+                cursor.ensure_within_bounds(buf_len, line_len, editor_rows);
+                return HandlerResult::StatusMessage("1 change; before #1".to_string());
+            }
+            return HandlerResult::StatusMessage("Already at oldest change".to_string());
+        }
+        Key::Ctrl('r') => {
+            let current = editor.snapshot(cursor);
+            if let Some(next) = editor.history.redo(current) {
+                editor.restore_snapshot(next, cursor);
+                let (buf_len, line_len) = editor.buffer_info(cursor.file_row());
+                cursor.ensure_within_bounds(buf_len, line_len, editor_rows);
+                return HandlerResult::StatusMessage("1 change".to_string());
+            }
+            return HandlerResult::StatusMessage("Already at newest change".to_string());
+        }
         Key::Char('i') => {
+            editor.history.commit(editor.snapshot(cursor));
             mode_manager.enter_insert();
         }
         Key::Char('I') => {
             // 行頭から Insert mode
+            editor.history.commit(editor.snapshot(cursor));
             cursor.move_to_line_start();
             mode_manager.enter_insert();
         }
         Key::Char('a') => {
             // カーソルの後ろから Insert mode
+            editor.history.commit(editor.snapshot(cursor));
             let row = cursor.file_row();
             if let Some(line) = editor.buffer().row(row) {
                 // Insert mode では行末+1まで移動可能
@@ -40,6 +63,7 @@ pub fn handle(
         }
         Key::Char('A') => {
             // 行末から Insert mode
+            editor.history.commit(editor.snapshot(cursor));
             let row = cursor.file_row();
             if let Some(line) = editor.buffer().row(row) {
                 // Insert mode では行末の1つ後ろに配置
@@ -54,6 +78,8 @@ pub fn handle(
         }
         Key::Char('o') => {
             // 下に新しい行を追加して Insert mode
+            // スナップショットはバッファ変更前に取得する
+            editor.history.commit(editor.snapshot(cursor));
             let row = cursor.file_row();
             editor.buffer_mut().insert_row(row + 1, String::new());
             cursor.move_down(editor_rows, editor.buffer().len());
@@ -62,12 +88,15 @@ pub fn handle(
         }
         Key::Char('O') => {
             // 上に新しい行を追加して Insert mode
+            // スナップショットはバッファ変更前に取得する
+            editor.history.commit(editor.snapshot(cursor));
             let row = cursor.file_row();
             editor.buffer_mut().insert_row(row, String::new());
             cursor.move_to_line_start();
             mode_manager.enter_insert();
         }
         Key::Char('x') => {
+            editor.history.commit(editor.snapshot(cursor));
             let pos = cursor.position();
             if editor.delete_char_at_cursor(pos) {
                 // 削除成功後、行末を超えないように調整
@@ -81,6 +110,7 @@ pub fn handle(
         Key::Char('d') => {
             // dd コマンド実行時
             if *pending_key == Some('d') {
+                editor.history.commit(editor.snapshot(cursor));
                 let row = cursor.file_row();
                 if editor.delete_line(row) {
                     // 削除成功後、カーソル位置調整
@@ -105,6 +135,7 @@ pub fn handle(
             return HandlerResult::ClearStatus;
         }
         Key::Char('p') => {
+            editor.history.commit(editor.snapshot(cursor));
             let pos = cursor.position();
 
             match editor.paste(pos, PasteDirection::Below) {
@@ -121,6 +152,7 @@ pub fn handle(
             return HandlerResult::ClearStatus;
         }
         Key::Char('P') => {
+            editor.history.commit(editor.snapshot(cursor));
             let pos = cursor.position();
 
             // Above の場合は特にカーソル移動する必要がない

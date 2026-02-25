@@ -1,4 +1,10 @@
-use crate::{buffer::Buffer, cursor::Position, file_io::FileIO, yank::YankManager};
+use crate::{
+    buffer::Buffer,
+    cursor::{Cursor, Position},
+    file_io::FileIO,
+    history::{Snapshot, UndoHistory},
+    yank::YankManager,
+};
 use std::io;
 
 pub enum PasteDirection {
@@ -24,6 +30,7 @@ pub struct Editor {
     /// 未保存の変更があるか
     dirty: bool,
     pub yank: YankManager,
+    pub history: UndoHistory,
 }
 
 impl Default for Editor {
@@ -39,6 +46,7 @@ impl Editor {
             filename: None,
             dirty: false,
             yank: YankManager::new(),
+            history: UndoHistory::new(1000),
         }
     }
 
@@ -48,6 +56,7 @@ impl Editor {
             filename,
             dirty: false,
             yank: YankManager::new(),
+            history: UndoHistory::new(1000),
         }
     }
 
@@ -57,6 +66,7 @@ impl Editor {
         self.buffer = buffer;
         self.filename = Some(filename);
         self.dirty = false;
+        self.history = UndoHistory::new(1000);
         // yank の状態は継続して良いため、YankManager は意図的に更新していない
         Ok(())
     }
@@ -67,10 +77,29 @@ impl Editor {
             // Editor のプロパティを更新する
             self.buffer = buffer;
             self.dirty = false;
+            self.history = UndoHistory::new(1000);
             Ok(())
         } else {
             Err(io::Error::new(io::ErrorKind::NotFound, "No file name"))
         }
+    }
+
+    /// 現在のバッファ状態とカーソル位置をスナップショットとして作成する
+    pub fn snapshot(&self, cursor: &Cursor) -> Snapshot {
+        Snapshot {
+            buffer: self.buffer.clone(),
+            cursor_x: cursor.x(),
+            cursor_y: cursor.y(),
+            cursor_row_offset: cursor.row_offset(),
+            was_dirty: self.dirty,
+        }
+    }
+
+    /// スナップショットをエディタとカーソルに復元する
+    pub fn restore_snapshot(&mut self, snapshot: Snapshot, cursor: &mut Cursor) {
+        self.buffer = snapshot.buffer;
+        self.dirty = snapshot.was_dirty;
+        cursor.restore(snapshot.cursor_x, snapshot.cursor_y, snapshot.cursor_row_offset);
     }
 
     pub fn buffer(&self) -> &Buffer {

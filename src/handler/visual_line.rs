@@ -36,6 +36,7 @@ pub fn handle(
         }
         Key::Char('d') => {
             if let Some(start) = mode_manager.visual_start() {
+                editor.history.commit(editor.snapshot(cursor));
                 let end = cursor.position();
                 let min_row = start.row.min(end.row);
                 if editor.delete_lines_range(start.row, end.row) {
