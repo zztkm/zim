@@ -16,6 +16,7 @@ impl Screen {
     pub fn draw_rows(
         stdout: &mut impl Write,
         rows: u16,
+        cols: u16,
         buffer: &Buffer,
         row_offset: u16,
         selection: Option<(Position, Position)>,
@@ -49,8 +50,8 @@ impl Screen {
                                 if chars.is_empty() {
                                     write!(stdout, " ")?;
                                 } else {
-                                    let display: String = if chars.len() > 80 {
-                                        chars.iter().take(80).collect()
+                                    let display: String = if chars.len() > cols as usize {
+                                        chars.iter().take(cols as usize).collect()
                                     } else {
                                         text.to_string()
                                     };
@@ -88,13 +89,13 @@ impl Screen {
 
                                 // 選択後
                                 let after: String =
-                                    chars.iter().skip(end_col + 1).take(80).collect();
+                                    chars.iter().skip(end_col + 1).take(cols as usize).collect();
                                 write!(stdout, "{}", after)?;
                             }
                         } else {
                             // 選択範囲外の通常表示
-                            let display_text: String = if chars.len() > 80 {
-                                chars.iter().take(80).collect()
+                            let display_text: String = if chars.len() > cols as usize {
+                                chars.iter().take(cols as usize).collect()
                             } else {
                                 text.to_string()
                             };
@@ -102,8 +103,8 @@ impl Screen {
                         }
                     } else {
                         // 選択なしの通常表示
-                        let display_text: String = if chars.len() > 80 {
-                            chars.iter().take(80).collect()
+                        let display_text: String = if chars.len() > cols as usize {
+                            chars.iter().take(cols as usize).collect()
                         } else {
                             text.to_string()
                         };
@@ -130,6 +131,7 @@ impl Screen {
         filename: Option<&str>,
         buffer_len: usize,
         cursor_file_row: usize,
+        cols: u16,
     ) -> io::Result<()> {
         // ステータスバー（反転表示）
         write!(stdout, "\r\n{}", termion::style::Invert)?;
@@ -145,7 +147,7 @@ impl Screen {
             0
         };
         let pos = format!(" {}/{} ", current_line, buffer_len);
-        let padding = 80usize
+        let padding = (cols as usize)
             .saturating_sub(status.len())
             .saturating_sub(pos.len());
         write!(stdout, "{}{}", " ".repeat(padding), pos)?;
@@ -212,6 +214,7 @@ impl Screen {
         Self::draw_rows(
             stdout,
             size.1,
+            size.0,
             buffer,
             cursor.row_offset(),
             selection,
@@ -219,7 +222,7 @@ impl Screen {
         )?;
 
         // ステータスバー描画
-        Self::draw_status_bar(stdout, filename, buffer.len(), cursor.file_row())?;
+        Self::draw_status_bar(stdout, filename, buffer.len(), cursor.file_row(), size.0)?;
 
         // コマンドライン / ステータスライン (最下行)
         Self::draw_command_line(stdout, mode, command_buffer, status_message)?;
