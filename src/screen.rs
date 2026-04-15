@@ -72,24 +72,31 @@ impl Screen {
                                     chars.len().saturating_sub(1)
                                 };
 
-                                // ハイライト表示
+                                // ハイライト表示（before + selected + after が cols を超えないよう管理）
+                                let mut remaining = cols as usize;
+
                                 // 選択前
-                                let before: String = chars.iter().take(start_col).collect();
+                                let before_len = start_col.min(remaining);
+                                let before: String = chars.iter().take(before_len).collect();
                                 write!(stdout, "{}", before)?;
+                                remaining = remaining.saturating_sub(before_len);
 
                                 // 選択部分（反転）
+                                let selected_len =
+                                    (end_col.saturating_sub(start_col) + 1).min(remaining);
                                 write!(stdout, "{}", termion::style::Invert)?;
                                 let selected: String = chars
                                     .iter()
                                     .skip(start_col)
-                                    .take(end_col.saturating_sub(start_col) + 1)
+                                    .take(selected_len)
                                     .collect();
                                 write!(stdout, "{}", selected)?;
                                 write!(stdout, "{}", termion::style::Reset)?;
+                                remaining = remaining.saturating_sub(selected_len);
 
                                 // 選択後
                                 let after: String =
-                                    chars.iter().skip(end_col + 1).take(cols as usize).collect();
+                                    chars.iter().skip(end_col + 1).take(remaining).collect();
                                 write!(stdout, "{}", after)?;
                             }
                         } else {

@@ -229,3 +229,60 @@ pub fn handle(
     *pending_key = next_pending_key;
     HandlerResult::Continue
 }
+
+#[cfg(test)]
+mod tests {
+    use super::handle;
+    use termion::event::Key;
+    use crate::buffer::Buffer;
+    use crate::cursor::Cursor;
+    use crate::editor::Editor;
+    use crate::handler::HandlerResult;
+    use crate::mode::ModeManager;
+
+    fn make_editor_with_lines(lines: &[&str]) -> Editor {
+        let mut buffer = Buffer::new();
+        for (i, line) in lines.iter().enumerate() {
+            buffer.insert_row(i, line.to_string());
+        }
+        Editor::from_buffer(buffer, None)
+    }
+
+    fn send_key(
+        key: Key,
+        editor: &mut Editor,
+        cursor: &mut Cursor,
+        mode_manager: &mut ModeManager,
+        pending_key: &mut Option<char>,
+    ) -> HandlerResult {
+        let terminal_size = (80u16, 24u16);
+        let editor_rows = 22u16; // 24 - UI_HEIGHT(2)
+        handle(key, editor, cursor, mode_manager, pending_key, terminal_size, editor_rows)
+    }
+
+    #[test]
+    fn test_dd_deletes_correct_line() {
+        let mut editor = make_editor_with_lines(&["aaa", "bbb", "ccc", "ddd", "eee"]);
+        let mut cursor = Cursor::new();
+        let mut mode_manager = ModeManager::new();
+        let mut pending_key: Option<char> = None;
+
+        // j を 2 回押して "ccc" (row index 2) に移動
+        send_key(Key::Char('j'), &mut editor, &mut cursor, &mut mode_manager, &mut pending_key);
+        send_key(Key::Char('j'), &mut editor, &mut cursor, &mut mode_manager, &mut pending_key);
+
+        assert_eq!(cursor.file_row(), 2, "cursor should be on row index 2 (ccc)");
+
+        // dd: d を 2 回押す
+        send_key(Key::Char('d'), &mut editor, &mut cursor, &mut mode_manager, &mut pending_key);
+        assert_eq!(pending_key, Some('d'), "after first d, pending_key should be Some('d')");
+        send_key(Key::Char('d'), &mut editor, &mut cursor, &mut mode_manager, &mut pending_key);
+
+        // "ccc" が削除されて 4 行になっているはず
+        assert_eq!(editor.buffer().len(), 4, "buffer should have 4 lines after dd");
+        assert_eq!(editor.buffer().row(0).map(|r| r.chars()), Some("aaa"));
+        assert_eq!(editor.buffer().row(1).map(|r| r.chars()), Some("bbb"));
+        assert_eq!(editor.buffer().row(2).map(|r| r.chars()), Some("ddd"), "ccc should be deleted");
+        assert_eq!(editor.buffer().row(3).map(|r| r.chars()), Some("eee"));
+    }
+}
