@@ -19,6 +19,14 @@ pub fn handle(
             mode_manager.enter_normal();
             cursor.move_left();
         }
+        // PTY 経由のテストでは \x1b の直後に ':' が続くと
+        // termion が Key::Alt(':') として解析するため、
+        // Insert モードを抜けてコマンドモードに入るとして扱う
+        Key::Alt(':') => {
+            mode_manager.enter_normal();
+            cursor.move_left();
+            mode_manager.enter_command();
+        }
         Key::Char('\n') => {
             // 改行
             let pos = cursor.position();

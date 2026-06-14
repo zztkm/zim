@@ -10,7 +10,13 @@ pub struct Terminal {
 impl Terminal {
     pub fn new() -> io::Result<Self> {
         let stdout = io::stdout().into_raw_mode()?;
-        let size = termion::terminal_size()?;
+        let raw_size = termion::terminal_size()?;
+        // PTY サイズが (0, 0) の場合（テスト環境等）はデフォルトサイズを使用
+        let size = if raw_size.0 == 0 || raw_size.1 == 0 {
+            (80, 24)
+        } else {
+            raw_size
+        };
         Ok(Self { stdout, size })
     }
 

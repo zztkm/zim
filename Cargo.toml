@@ -10,3 +10,6 @@ thiserror = "2.0"
 arboard = "3.6.1"
 unicode-width = "0.1"
 
+[dev-dependencies]
+rexpect = "0.5"
+tempfile = "3"

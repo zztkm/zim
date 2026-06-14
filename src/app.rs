@@ -64,14 +64,19 @@ impl App {
                 self.editor_rows,
             )
         } else if self.mode_manager.is_insert() {
-            handler::insert::handle(
+            let r = handler::insert::handle(
                 key,
                 &mut self.editor,
                 &mut self.cursor,
                 &mut self.mode_manager,
                 self.terminal_size,
                 self.editor_rows,
-            )
+            );
+            // Insert モードからコマンドモードに入った場合、command_buffer をクリアする
+            if self.mode_manager.is_command() {
+                self.command_buffer.clear();
+            }
+            r
         } else if self.mode_manager.is_visual() {
             handler::visual::handle(
                 key,
